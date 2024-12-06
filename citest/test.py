@@ -46,14 +46,14 @@ class RLTest:
         self.results = None
 
     def __repr__(self):
-        return f""""
-            Conditional independence test:
-                - Data size: {self.dataset.n}
-                - Imputer: {self.imputer}
-                - Classifier: {self.classifier}
-                - Folds: {self.n_folds}
-                - Repetitions: {self.repetitions}
-        """
+        return (
+            f"Conditional independence test:\n"
+            f"    - Data size: {self.dataset.n}\n"
+            f"    - Imputer: {self.imputer}\n"
+            f"    - Classifier: {self.classifier}\n"
+            f"    - Folds: {self.n_folds}\n"
+            f"    - Repetitions: {self.repetitions}\n"
+        )
 
     def run(self):
         """Run the conditional independence test
@@ -124,18 +124,16 @@ class RLTest:
 
         if self.results is not None:
             print(
-                f"""
-                ----------------------------------------------
-                Conditional independence test results
-                ----------------------------------------------
-                Outcome: {self.dataset.miss_data.columns[0]}
-                Imputer: {self.imputer}
-                Classifier: {self.classifier}
-                ----------------------------------------------
-                Mean difference in BCE: {self.results["m"]}
-                p-value: {self.results["p"]}
-                ----------------------------------------------
-                """
+                f"----------------------------------------------\n"
+                f"Conditional independence test results\n"
+                f"----------------------------------------------\n"
+                f"Outcome: {self.dataset.miss_data.columns[0]}\n"
+                f"Imputer: {self.imputer}\n"
+                f"Classifier: {self.classifier}\n"
+                f"----------------------------------------------\n"
+                f"Mean difference in BCE: {self.results['m']}\n"
+                f"p-value: {self.results['p']}\n"
+                f"----------------------------------------------\n"
             )
         else:
             raise ValueError("Please run the test before calling summary")
