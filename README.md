@@ -10,9 +10,9 @@ To use the test, download this repo. From the main directory, you can import the
 
 ```python
 from citest.test import RLtest
-from citest.data import v4_dgp, MAR1
+from citest.data import MAR1
 from citest.classifier import RandomForest
-from citest.imputer import *
+from citest.imputer import IterativeImputer
 
 import numpy as np
 
