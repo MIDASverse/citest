@@ -82,6 +82,14 @@ class RLTest:
                     for x in range(self.n_folds)
                 ]
             )
+
+            # Randomly assign remainder of observations when n does not divide into n_folds
+            if len(folds) != self.dataset.n:
+                extra_folds = np.random.choice(
+                    self.n_folds, self.dataset.n - len(folds)
+                )
+                folds = np.concatenate([folds, extra_folds])
+
             np.random.shuffle(folds)
 
             for k in range(self.n_folds):

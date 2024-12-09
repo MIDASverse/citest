@@ -5,12 +5,12 @@ from citest.imputer import *
 
 import numpy as np
 
-B = 20
+B = 100
 ps = [np.nan for _ in range(B)]
 
 for b in range(B):
     print(b)
-    test_data = MAR1(1000, ci=False)
+    test_data = MAR1(2000, ci=True)
 
     test1 = test.RLTest(
         test_data,

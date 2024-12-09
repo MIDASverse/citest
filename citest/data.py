@@ -35,11 +35,15 @@ class Dataset(BaseModel):
             {np.sum(~self.mask)} missing values
             """
 
-    def make(self, data: pd.DataFrame):
+    def make(self, data: pd.DataFrame, y=None, onehot=True):
         """Create a Dataset object from a pandas DataFrame to be used for the RL test.
 
         Args:
             data: A pandas DataFrame with missing values (recorded as np.nan)
+            y: A string with the name of the outcome variable. If not provided,
+                the first column will be assumed as the outcome.
+            onehot: A boolean indicating whether to one-hot encode the data (default: True).
+                Integer, float, and binary variables will not be encoded.
 
         """
 
@@ -48,9 +52,22 @@ class Dataset(BaseModel):
                 "Data already exists -- please create a new Dataset object"
             )
 
-        self.miss_data = data
-        self.mask = ~data.isnull().to_numpy()
-        self.n = data.shape[0]
+        if y is not None:
+            data = pd.concat([data[y], data.drop(y, axis=1)], axis=1)
+
+        data_wide = pd.get_dummies(data, dummy_na=True, dtype="boolean")
+
+        for col in data.columns:
+            if col + "_nan" in data_wide.columns:
+                data_wide.loc[
+                    data[col].isnull(), data_wide.columns.str.startswith(col + "_")
+                ] = np.nan
+
+                data_wide.drop(col + "_nan", axis=1, inplace=True)
+
+        self.miss_data = data_wide
+        self.mask = ~data_wide.isnull().to_numpy()
+        self.n = data_wide.shape[0]
         self.full_data = None
 
 
@@ -104,7 +121,7 @@ def v4_dgp(
     elif R_by.upper() == "X":
         R_latent = X1
     else:
-        raise ValueError("m must be either 'Y' or 'X'")
+        raise ValueError("R_by must be either 'Y' or 'X'")
 
     R = 1 * R_latent < np.quantile(R_latent, 0.5)
 
@@ -113,7 +130,7 @@ def v4_dgp(
     elif R_in.upper() == "Y":
         Y[R == 0] = np.nan
     else:
-        raise ValueError("m must be either 'X' or 'Y'")
+        raise ValueError("R_in must be either 'X' or 'Y'")
 
     corrupt_data = pd.DataFrame(
         {"Y": Y, "X1": X1, "X2": X2, "X3": X3, "X4": X4, "X5": X5}
@@ -173,10 +190,10 @@ def MAR1(
     U3 = np.random.uniform(0, 1, n)
     if ci:
         M[:, 2] = ~np.all(
-            [data[:, 3] < -1, U3 < 0.9], axis=0
-        )  # missing by X3 (original)
+            [data[:, 1] < -1, U3 < 0.9], axis=0
+        )  # missing by X3 (original) but X1 means we can make it more complex as X1 also has missing values
     else:
-        M[:, 2] = ~np.all([data[:, 0] < 0, U3 < 0.9], axis=0)  # missing by Y
+        M[:, 2] = ~np.all([data[:, 0] < -1, U3 < 0.9], axis=0)  # missing by Y
 
     corrupt_data = data.copy()
     corrupt_data[~M] = np.nan
