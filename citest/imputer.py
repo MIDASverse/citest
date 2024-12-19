@@ -102,3 +102,24 @@ class IterativeImputer(Imputer):
         imputer.set_output(transform="pandas")
         self.completed = imputer.fit_transform(self.dataset.miss_data)
         self.model = imputer
+
+
+class MidasImputer(Imputer):
+    """Impute missing data with MIDAS
+
+    This imputer uses the new torch version of MIDAS to fill in missing data.
+
+    This imputer can be used with real data. Additional arguments may be
+    passed to the imputation model through the imputer_args parameter in
+    the test module.
+
+
+    """
+
+    def __init__(self, dataset=None):
+        super().__init__(dataset)
+
+    def _complete(self, **kwargs):
+        imputer = MIDAS(**kwargs)
+        self.completed = imputer.fit_transform(self.dataset.miss_data)
+        self.model = imputer

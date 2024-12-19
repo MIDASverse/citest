@@ -1,33 +1,22 @@
-import pandas as pd
 import numpy as np
 
-from citest.test import RLTest
-from citest.imputer import IterativeImputer
+from citest.imputer import IterativeImputer, CompleteImputer
 from citest.classifier import RandomForest
-from citest.data import v4_dgp, MAR1, Dataset
+from citest.data import adult
 
+from citest.simulate import simulate
 
-adult = pd.read_csv("citest/data/us-census-income.csv")
-adult["income"] = adult["income"].map({"<=50K": 0, ">50K": 1})
-adult = adult.iloc[:, :]
-adult["income"] = np.where(adult["age"] > 50, np.nan, adult["age"])
-adult.loc[0, "native-country"] = np.nan
+np.random.seed(89)
 
-for i in np.random.choice(adult.shape[0], adult.shape[0]):
-    adult.iloc[i, np.random.choice(adult.shape[1], 1)] = np.nan
-
-adult_data = Dataset()
-adult_data.make(adult, y="income")
-
-mod = RLTest(
-    adult_data,
-    imputer=IterativeImputer,
+adult_res = simulate(
+    adult,
+    n=1000,
+    B=20,
+    imputer=CompleteImputer,
     classifier=RandomForest,
-    n_folds=10,
-    repetitions=10,
-    classifier_args={"n_estimators": 20, "n_jobs": 8},
+    dgp_args={"mcar_prop": 0.5, "ci": True},
     imputer_args={"max_iter": 30},
+    classifier_args={"n_estimators": 5, "n_jobs": 8},
 )
 
-mod.run()
-mod.results
+np.mean([p < 0.05 for p in adult_res])

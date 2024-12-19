@@ -4,11 +4,15 @@ from citest.classifier import RandomForest
 from citest.data import v4_dgp, MAR1
 
 import pandas as pd
+import numpy as np
 
 if __name__ == "__main__":
 
     ns = [100, 200, 500, 1000, 2000, 5000, 10000]
-    R_ins, R_bys = ["X", "Y"]
+    R_bys = ["X", "Y"]
+    R_ins = ["X", "Y"]
+
+    np.random.seed(89)
 
     v4_res = {}
     for n in ns:
@@ -30,7 +34,7 @@ if __name__ == "__main__":
     mar1_res = {}
     for n in ns:
         for ci in [True, False]:
-            mar1_res[str(n) + "_" + "ci" if ci else "nci"] = simulate(
+            mar1_res[str(n) + "_" + ("ci" if ci else "nci")] = simulate(
                 MAR1,
                 n,
                 B=200,
@@ -47,9 +51,9 @@ if __name__ == "__main__":
     n_estimators = [5, 10, 20, 50, 100]
     for n_est in n_estimators:
         for ci in [True, False]:
-            mar1_nest_res[str(n_est) + "_" + "ci" if ci else "nci"] = simulate(
+            mar1_nest_res[str(n_est) + "_" + ("ci" if ci else "nci")] = simulate(
                 MAR1,
-                n,
+                n=2000,
                 B=200,
                 imputer=IterativeImputer,
                 classifier=RandomForest,
