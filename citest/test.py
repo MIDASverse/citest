@@ -6,6 +6,8 @@ from .utils import BCEclip
 import numpy as np
 from scipy import stats
 
+from sklearn.model_selection import RepeatedKFold
+
 
 class RLTest:
     """Run a conditional independence test on a dataset
@@ -35,6 +37,7 @@ class RLTest:
         repetitions: int = 10,
         classifier_args: dict = {},
         imputer_args: dict = {},
+        random_state: int = 42,
     ):
         self.dataset = dataset
         self.imputer = imputer
@@ -44,6 +47,7 @@ class RLTest:
         self.classifier_args = classifier_args
         self.imputer_args = imputer_args
         self.results = None
+        self.rng = np.random.default_rng(random_state)
 
     def __repr__(self):
         return (
@@ -53,6 +57,13 @@ class RLTest:
             f"    - Classifier: {self.classifier}\n"
             f"    - Folds: {self.n_folds}\n"
             f"    - Repetitions: {self.repetitions}\n"
+        )
+
+    def _get_cv(self):
+        return RepeatedKFold(
+            n_splits=self.n_folds,
+            n_repeats=self.repetitions,
+            random_state=self.rng.integers(2**32 - 1),
         )
 
     def run(self):
@@ -71,49 +82,31 @@ class RLTest:
 
         # Classifier test
 
-        diffs = np.zeros(self.n_folds * self.repetitions)
+        diffs = []
+        cv = self._get_cv()
 
-        for r in range(self.repetitions):
+        for train_idx, test_idx in cv.split(np.arange(imp_data.shape[0])):
 
-            folds = np.array(
-                [
-                    x
-                    for _ in range(self.dataset.n // self.n_folds)
-                    for x in range(self.n_folds)
-                ]
-            )
+            train = imp_data.iloc[train_idx, :]
+            test = imp_data.iloc[test_idx, :]
 
-            # Randomly assign remainder of observations when n does not divide into n_folds
-            if len(folds) != self.dataset.n:
-                extra_folds = np.random.choice(
-                    self.n_folds, self.dataset.n - len(folds)
-                )
-                folds = np.concatenate([folds, extra_folds])
+            train_R = 1 * self.dataset.mask[train_idx, :]
+            test_R = 1 * self.dataset.mask[test_idx, :]
 
-            np.random.shuffle(folds)
+            modX = self.classifier(random_state=1, **self.classifier_args)
+            modXY = self.classifier(random_state=0, **self.classifier_args)
 
-            for k in range(self.n_folds):
+            modX.fit(X=train.iloc[:, 1:], y=train_R)
+            modXY.fit(X=train, y=train_R)
 
-                train = imp_data.iloc[folds != k, :]
-                test = imp_data.iloc[folds == k, :]
+            predsX = modX.predict(test.iloc[:, 1:])
+            predsXY = modXY.predict(test)
 
-                train_R = 1 * self.dataset.mask[folds != k, :]
-                test_R = 1 * self.dataset.mask[folds == k, :]
+            errX = BCEclip(predsX.flatten(), test_R.flatten())
+            errXY = BCEclip(predsXY.flatten(), test_R.flatten())
 
-                modX = self.classifier(random_state=1, **self.classifier_args)
-                modXY = self.classifier(random_state=0, **self.classifier_args)
-
-                modX.fit(X=train.iloc[:, 1:], y=train_R)
-                modXY.fit(X=train, y=train_R)
-
-                predsX = modX.predict(test.iloc[:, 1:])
-                predsXY = modXY.predict(test)
-
-                errX = BCEclip(predsX.flatten(), test_R.flatten())
-                errXY = BCEclip(predsXY.flatten(), test_R.flatten())
-
-                xij = errXY - errX
-                diffs[r * self.repetitions + k] = xij
+            xij = errXY - errX
+            diffs.append(xij)
 
         m = np.mean(diffs)
         sigma2 = (1 / (len(diffs) - 1)) * np.sum((diffs - m) ** 2)
