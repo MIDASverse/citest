@@ -22,6 +22,8 @@ def BCEclip(
         None
 
     """
+    assert p.shape == y.shape, "p and y must have the same shape"
+
     with np.errstate(divide="ignore"):
         clipped = np.mean(
             -(

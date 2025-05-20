@@ -85,7 +85,12 @@ class RLTest:
         diffs = []
         cv = self._get_cv()
 
-        for train_idx, test_idx in cv.split(np.arange(imp_data.shape[0])):
+        if imp_data.shape[0] > 2000:
+            sample_idxs = self.rng.choice(imp_data.shape[0], size=2000, replace=False)
+        else:
+            sample_idxs = np.arange(imp_data.shape[0])
+
+        for train_idx, test_idx in cv.split(sample_idxs):
 
             train = imp_data.iloc[train_idx, :]
             test = imp_data.iloc[test_idx, :]
@@ -93,11 +98,9 @@ class RLTest:
             train_R = 1 * self.dataset.mask[train_idx, :]
             test_R = 1 * self.dataset.mask[test_idx, :]
 
-            classifier_seed = self.rng.integers(2**32 - 1)
-            modX = self.classifier(random_state=classifier_seed, **self.classifier_args)
-            modXY = self.classifier(
-                random_state=classifier_seed, **self.classifier_args
-            )
+            class_seed = self.rng.integers(2**32 - 1)
+            modX = self.classifier(random_state=class_seed, **self.classifier_args)
+            modXY = self.classifier(random_state=class_seed, **self.classifier_args)
 
             modX.fit(X=train.iloc[:, 1:], y=train_R)
             modXY.fit(X=train, y=train_R)

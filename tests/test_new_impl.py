@@ -1,5 +1,5 @@
 import citest.test as test
-from citest.data import v4_dgp, MAR1
+from citest.data import v4_dgp, MAR1, adult
 from citest.classifier import RandomForest
 from citest.imputer import *
 
@@ -10,8 +10,8 @@ ps = [np.nan for _ in range(B)]
 
 for b in range(B):
     print(b)
-    test_data = v4_dgp(2000, R_by="X", R_in="X")
-    # test_data = MAR1(1000, ci=True)
+    test_data = v4_dgp(5000, R_by="X", R_in="X")
+    # test_data = MAR1(5000, ci=False)
     test1 = test.RLTest(
         test_data,
         imputer=IterativeImputer,
