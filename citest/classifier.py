@@ -45,7 +45,7 @@ class RandomForest(CIClassifier):
 
     def __init__(self, **kwargs):
         super().__init__()
-        self.model = RandomForestClassifier(**kwargs)
+        self.model = RandomForestClassifier(**kwargs, max_features=None)
 
     def _fit(self, X, y):
 

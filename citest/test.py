@@ -94,11 +94,9 @@ class RLTest:
             test_R = 1 * self.dataset.mask[test_idx, :]
 
             classifier_seed = self.rng.integers(2**32 - 1)
-            modX = self.classifier(
-                random_state=classifier_seed, max_features=None, **self.classifier_args
-            )
+            modX = self.classifier(random_state=classifier_seed, **self.classifier_args)
             modXY = self.classifier(
-                random_state=classifier_seed, max_features=None, **self.classifier_args
+                random_state=classifier_seed, **self.classifier_args
             )
 
             modX.fit(X=train.iloc[:, 1:], y=train_R)
