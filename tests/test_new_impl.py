@@ -5,12 +5,12 @@ from citest.imputer import *
 
 import numpy as np
 
-B = 100
+B = 10
 ps = [np.nan for _ in range(B)]
 
 for b in range(B):
     print(b)
-    test_data = MAR1(2000, ci=True)
+    test_data = v4_dgp(2000, R_by="X", R_in="X")
 
     test1 = test.RLTest(
         test_data,
@@ -18,7 +18,7 @@ for b in range(B):
         classifier=RandomForest,
         n_folds=10,
         repetitions=10,
-        classifier_args={"n_estimators": 20},
+        classifier_args={"n_estimators": 20, "n_jobs": 8},
         imputer_args={"max_iter": 30},
     )
 
