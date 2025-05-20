@@ -18,7 +18,7 @@ for b in range(B):
         classifier=RandomForest,
         n_folds=10,
         repetitions=10,
-        classifier_args={"n_estimators": 20, "n_jobs": 8},
+        classifier_args={"n_estimators": 20, "n_jobs": -1},
         imputer_args={"max_iter": 30},
     )
 
