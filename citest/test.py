@@ -113,16 +113,13 @@ class RLTest:
             xij = errXY - errX
             diffs.append(xij)
 
+        # fold-level statistic
         m = np.mean(diffs)
-        sigma2 = (1 / (len(diffs) - 1)) * np.sum((diffs - m) ** 2)
-
+        sigma2 = np.var(diffs, ddof=1)
         n_per_fold = self.dataset.n / self.n_folds
-
-        t = m / np.sqrt(
-            ((1 / len(diffs)) + (n_per_fold / (self.dataset.n - n_per_fold))) * sigma2
-        )
-        p = stats.t.sf(np.abs(t), len(diffs) - 1) * 2
-
+        F = self.repetitions * self.n_folds
+        t = m / np.sqrt((1 / F + n_per_fold / (self.dataset.n - n_per_fold)) * sigma2)
+        p = 2 * stats.t.sf(np.abs(t), F - 1)
         self.results = {"m": m, "sigma2": sigma2, "t": t, "p": p}
 
     def summary(self):
