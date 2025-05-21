@@ -5,13 +5,13 @@ from citest.imputer import *
 
 import numpy as np
 
-B = 10
+B = 5
 ps = [np.nan for _ in range(B)]
 
 for b in range(B):
     print(b)
-    test_data = v4_dgp(5000, R_by="X", R_in="X")
-    # test_data = MAR1(5000, ci=False)
+    # test_data = v4_dgp(5000, R_by="X", R_in="X")
+    test_data = adult(2000, ci=True)
     test1 = test.RLTest(
         test_data,
         imputer=IterativeImputer,
@@ -19,7 +19,7 @@ for b in range(B):
         n_folds=10,
         repetitions=10,
         classifier_args={"n_estimators": 20, "n_jobs": -1},
-        imputer_args={"max_iter": 30},
+        imputer_args={"max_iter": 100},
     )
 
     test1.run()
