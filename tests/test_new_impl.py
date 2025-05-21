@@ -18,9 +18,9 @@ for b in range(B):
         classifier=RandomForest,
         n_folds=10,
         repetitions=10,
-        classifier_args={"n_estimators": 20, "n_jobs": 8},
+        classifier_args={"n_estimators": 5, "n_jobs": 8},
         imputer_args={"max_iter": 100},
-        # imputer_args={"hidden_layers": [8, 4]},
+        # imputer_args={"hidden_layers": [16, 8]},
     )
 
     test1.run()

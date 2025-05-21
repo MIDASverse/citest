@@ -3,7 +3,6 @@ import pandas as pd
 from sklearn.experimental import enable_iterative_imputer  # noqa
 from sklearn.impute import IterativeImputer as skII
 from MIDAS2 import model as md
-from MIDAS2.utils import imp_mean
 
 from .data import Dataset
 
@@ -130,5 +129,7 @@ class MidasImputer(Imputer):
         midas_model = md.MIDAS(**kwargs)
         midas_model.fit(self.dataset.miss_data, epochs=20)
 
-        self.completed = imp_mean(midas_model.transform(m=10), pandas=True)
+        # take m=10 draws for completed data
+        imps = list(midas_model.transform(m=10))
+        self.completed = sum(imps) / len(imps)
         self.model = midas_model
