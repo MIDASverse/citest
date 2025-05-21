@@ -100,9 +100,14 @@ class IterativeImputer(Imputer):
         super().__init__(dataset)
 
     def _complete(self, **kwargs):
-        imputer = skII(**kwargs)
+        imputer = skII(**kwargs, sample_posterior=True)
         imputer.set_output(transform="pandas")
-        self.completed = imputer.fit_transform(self.dataset.miss_data)
+        imputer.fit(self.dataset.miss_data)
+
+        # take m=10 draws for completed data
+        imps = [imputer.transform(self.dataset.miss_data) for _ in range(10)]
+        self.completed = sum(imps) / len(imps)
+
         self.model = imputer
 
 
