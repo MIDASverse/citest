@@ -127,7 +127,7 @@ class MidasImputer(Imputer):
 
     def _complete(self, **kwargs):
         midas_model = md.MIDAS(**kwargs)
-        midas_model.fit(self.dataset.miss_data, epochs=20)
+        midas_model.fit(self.dataset.miss_data, epochs=250)
 
         # take m=10 draws for completed data
         imps = list(midas_model.transform(m=10))
