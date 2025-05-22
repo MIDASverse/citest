@@ -274,3 +274,60 @@ def adult(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
     assert (a_dataset.full_data.columns == a_dataset.miss_data.columns).all()
 
     return a_dataset
+
+
+def mushrooms(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
+
+    path = files("citest.data_examples").joinpath("agaricus-lepiota.data")
+    mushrooms = pd.read_csv(path, delimiter=",", header=None)
+    mushrooms.columns = ["y"] + [f"X{i}" for i in range(1, mushrooms.shape[1])]
+    idxs = np.random.choice(mushrooms.shape[0], n)
+
+    mushrooms_compl = mushrooms.iloc[idxs, :].copy()
+
+    mushrooms_compl.loc[:, "y"] = mushrooms_compl["y"].map({"p": 0, "e": 1})
+
+    assert (
+        mushrooms_compl.columns[0] == "y" and mushrooms_compl.iloc[:, 0].nunique() == 2
+    )
+
+    mushrooms_compl["y"] = mushrooms_compl["y"].astype("int64")
+
+    # Make dataset object
+    m_dataset = Dataset()
+    m_wide = m_dataset._dummy(mushrooms_compl)
+
+    odor_cols = list(filter(compile("^X5_").match, m_wide.columns.tolist()))
+
+    # Missing pattern
+    mushrooms_miss = m_wide.copy()
+
+    if not ci:
+        for i in range(mushrooms_miss.shape[0]):
+            if mushrooms_miss["y"].iloc[i] == 1 and np.random.rand() < 0.9:
+                mushrooms_miss.loc[i, odor_cols] = pd.NA
+
+    else:
+        for i in range(mushrooms_miss.shape[0]):
+            if mushrooms_compl["X6"].iloc[i] == "t" and np.random.rand() < 0.9:
+                mushrooms_miss.loc[i, odor_cols] = pd.NA
+
+    for c in np.random.choice(
+        a=mushrooms_miss.shape[1] - 1,
+        size=int(mushrooms_miss.shape[1] * mcar_prop),
+    ):
+        mushrooms_miss.iloc[
+            np.random.choice(
+                mushrooms_miss.shape[0], int(mushrooms_miss.shape[0] * 0.5)
+            ),
+            c + 1,
+        ] = np.nan
+
+    # Make dataset object
+    m_dataset.make(mushrooms_miss, y="y")
+    m_dataset.full_data = m_dataset._dummy(mushrooms_compl)
+
+    assert m_dataset.full_data.shape == m_dataset.miss_data.shape
+    assert (m_dataset.full_data.columns == m_dataset.miss_data.columns).all()
+
+    return m_dataset

@@ -1,5 +1,5 @@
 import citest.test as test
-from citest.data import v4_dgp, MAR1, adult
+from citest.data import v4_dgp, MAR1, adult, mushrooms
 from citest.classifier import RandomForest
 from citest.imputer import *
 
@@ -11,16 +11,16 @@ ps = [np.nan for _ in range(B)]
 for b in range(B):
     print(b)
     # test_data = v4_dgp(2000, R_by="X", R_in="X")
-    test_data = MAR1(2000, ci=True)
+    test_data = mushrooms(2000, ci=True)
     test1 = test.RLTest(
         test_data,
-        imputer=MidasImputer,
+        imputer=IterativeImputer,
         classifier=RandomForest,
         n_folds=10,
         repetitions=10,
         classifier_args={"n_estimators": 20, "n_jobs": 8},
-        # imputer_args={"max_iter": 30},
-        imputer_args={"hidden_layers": [64, 32]},
+        imputer_args={"max_iter": 30},
+        # imputer_args={"hidden_layers": [64, 32]},
     )
 
     test1.run()
