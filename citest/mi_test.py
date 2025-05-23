@@ -75,8 +75,7 @@ class MITest:
 
         # Impute data
         imputer = self.imputer(dataset=self.dataset)
-        _ = imputer.get_complete(**self.imputer_args)
-        imp_datasets = imputer.get_m_complete(m=self.m)
+        imp_datasets = imputer.get_m_complete(m=self.m, **self.imputer_args)
 
         # Classifier test
 
