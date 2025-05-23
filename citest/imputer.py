@@ -109,6 +109,19 @@ class IterativeImputer(Imputer):
 
         self.model = imputer
 
+    def get_m_complete(self, m: int = 10, **kwargs) -> pd.DataFrame:
+        """Get m completed datasets
+
+        This method will return m completed datasets, if they have already
+        been imputed, otherwise it will call the hidden completion
+        method first.
+
+        """
+        # Return imputed data once set
+        if self.completed is None:
+            self._complete(**kwargs)
+        return [self.model.transform(self.dataset.miss_data) for _ in range(m)]
+
 
 class MidasImputer(Imputer):
     """Impute missing data with MIDAS
@@ -133,3 +146,16 @@ class MidasImputer(Imputer):
         imps = list(midas_model.transform(m=10))
         self.completed = sum(imps) / len(imps)
         self.model = midas_model
+
+    def get_m_complete(self, m: int = 10, **kwargs) -> pd.DataFrame:
+        """Get m completed datasets
+
+        This method will return m completed datasets, if they have already
+        been imputed, otherwise it will call the hidden completion
+        method first.
+
+        """
+        # Return imputed data once set
+        if self.completed is None:
+            self._complete(**kwargs)
+        return list(self.model.transform(m=m))

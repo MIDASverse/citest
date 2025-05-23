@@ -61,13 +61,15 @@ class Dataset(BaseModel):
 
         return data_wide
 
-    def make(self, data: pd.DataFrame, y=None, _onehot=True):
+    def make(self, data: pd.DataFrame, y=None, X=None, _onehot=True):
         """Create a Dataset object from a pandas DataFrame to be used for the RL test.
 
         Args:
             data: A pandas DataFrame with missing values (recorded as np.nan)
             y: A string with the name of the outcome variable. If not provided,
                 the first column will be assumed as the outcome.
+            X: A list of strings with the names of the independent variables. If not provided,
+                all columns except the outcome will be used.
             _onehot: A boolean indicating whether to one-hot encode the data (default: True).
                 Integer, float, and binary variables will not be encoded.
 
@@ -87,20 +89,6 @@ class Dataset(BaseModel):
         self.mask = ~data_wide.isnull().to_numpy()
         self.n = data_wide.shape[0]
         self.full_data = None
-
-
-def CIData(data: pd.DataFrame) -> Dataset:
-    """Ingest missing data and format for the test
-
-    This function takes in a pandas DataFrame with missing values, extracts
-    a mask of the missingness, and returns a Dataset object.
-
-    Args:
-        data: A pandas DataFrame with missing values (recorded as np.nan)
-
-    """
-
-    pass
 
 
 def v4_dgp(
@@ -300,7 +288,7 @@ def mushrooms(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
     odor_cols = list(filter(compile("^X5_").match, m_wide.columns.tolist()))
 
     # Missing pattern
-    mushrooms_miss = m_wide.copy()
+    mushrooms_miss = m_wide.copy().reset_index(drop=True)
 
     if not ci:
         for i in range(mushrooms_miss.shape[0]):
