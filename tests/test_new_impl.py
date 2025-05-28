@@ -5,25 +5,26 @@ from citest.classifier import RandomForest
 from citest.imputer import *
 
 import numpy as np
+import pandas as pd
 
-B = 20
+B = 1
 ps = [np.nan for _ in range(B)]
 
 res = []
 for b in range(B):
     print(b)
-    # test_data = v4_dgp(5000, R_by="X", R_in="X")
-    test_data = MAR1(5000, ci=True)
+    # test_data = v4_dgp(500, R_by="X", R_in="Y")
+    test_data = adult(2000, ci=True)
     # test1 = test.RLTest(
-    test1 = mi_test.MITest(
+    test1 = mi_test.MITest2(
         test_data,
-        imputer=IterativeImputer,
+        imputer=MidasImputer,
         classifier=RandomForest,
         n_folds=10,
         m=10,
         classifier_args={"n_estimators": 20, "n_jobs": 8},
-        imputer_args={"max_iter": 30},
-        # imputer_args={"hidden_layers": [8, 32]},
+        # imputer_args={"max_iter": 30},
+        # imputer_args={},
     )
 
     test1.run()

@@ -118,7 +118,7 @@ class IterativeImputer(Imputer):
 
         """
         # Return imputed data once set
-        if self.completed is None:
+        if self.model is None:
             self._complete(**kwargs)
         return [self.model.transform(self.dataset.miss_data) for _ in range(m)]
 
@@ -138,16 +138,31 @@ class MidasImputer(Imputer):
     def __init__(self, dataset=None):
         super().__init__(dataset)
 
-    def _complete(self, **kwargs):
+    def _complete(self, train_index=None, **kwargs):
         midas_model = md.MIDAS(**kwargs)
-        midas_model.fit(self.dataset.miss_data, epochs=250)
+        epochs = 250
+        omit_first = True
+        if train_index is not None:
+            midas_model.fit(
+                self.dataset.miss_data.iloc[train_index, :].copy(),
+                epochs=epochs,
+                omit_first=omit_first,
+                verbose=True,
+            )
+        else:
+            midas_model.fit(
+                self.dataset.miss_data,
+                epochs=epochs,
+                omit_first=omit_first,
+                verbose=True,
+            )
 
         # take m=10 draws for completed data
         imps = list(midas_model.transform(m=10))
         self.completed = sum(imps) / len(imps)
         self.model = midas_model
 
-    def get_m_complete(self, m: int = 10, **kwargs) -> pd.DataFrame:
+    def get_m_complete(self, m: int = 10, train_index=None, **kwargs) -> pd.DataFrame:
         """Get m completed datasets
 
         This method will return m completed datasets, if they have already
@@ -156,6 +171,13 @@ class MidasImputer(Imputer):
 
         """
         # Return imputed data once set
-        if self.completed is None:
-            self._complete(**kwargs)
-        return list(self.model.transform(m=m))
+        if self.model is None:
+            self._complete(train_index=train_index, **kwargs)
+
+        if train_index is not None:
+            return list(
+                # pass through entire dataset as test will subset out test and train subsets
+                self.model.transform(X=self.dataset.miss_data, m=m, format_X=True)
+            )
+        else:
+            return list(self.model.transform(m=m))
