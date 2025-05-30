@@ -15,7 +15,7 @@ res3 = []
 for b in range(B):
     print(b)
     # test_data = v4_dgp(500, R_by="X", R_in="Y")
-    test_data = mushrooms(2000, ci=True)
+    test_data = mushrooms(500, ci=True)
     # test1 = test.RLTest(
     test_mi2 = mi_test.MITest2(
         test_data,

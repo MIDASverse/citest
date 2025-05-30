@@ -6,11 +6,17 @@ from citest.mi_test import MITest3
 import pandas as pd
 import numpy as np
 
+# Load in the dataset using pandas
 pol_data = pd.read_csv("...")
 
-pol_dataset = Dataset()
-pol_dataset.make(pol_data, y="OUTCOME")
+## NOTE: Make sure the dataset columns have the correct types (int/float, boolean, category)
 
+# Define the dataset object
+pol_dataset = Dataset()
+# TODO: Allow for restricting variables for CI aspect only
+pol_dataset.make(pol_data, y="OUTCOME")  # You must specify the outcome variable
+
+# Define the test object
 pol_test = MITest3(
     pol_dataset,
     imputer=MidasImputer,
@@ -21,5 +27,5 @@ pol_test = MITest3(
     verbose=True,
 )
 
-pol_test.run()
-pol_test.summary()
+pol_test.run()  # Will run k * m tests
+pol_test.summary()  # Will print a nice summary of results
