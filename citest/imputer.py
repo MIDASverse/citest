@@ -98,10 +98,14 @@ class IterativeImputer(Imputer):
     def __init__(self, dataset=None):
         super().__init__(dataset)
 
-    def _complete(self, **kwargs):
+    def _complete(self, train_index=None, **kwargs):
         imputer = skII(**kwargs, sample_posterior=True)
         imputer.set_output(transform="pandas")
-        imputer.fit(self.dataset.miss_data)
+
+        if train_index is not None:
+            imputer.fit(self.dataset.miss_data.iloc[train_index, :].copy())
+        else:
+            imputer.fit(self.dataset.miss_data)
 
         # take m=10 draws for completed data
         imps = [imputer.transform(self.dataset.miss_data) for _ in range(10)]
@@ -109,7 +113,7 @@ class IterativeImputer(Imputer):
 
         self.model = imputer
 
-    def get_m_complete(self, m: int = 10, **kwargs) -> pd.DataFrame:
+    def get_m_complete(self, m: int = 10, train_index=None, **kwargs) -> pd.DataFrame:
         """Get m completed datasets
 
         This method will return m completed datasets, if they have already
@@ -119,7 +123,7 @@ class IterativeImputer(Imputer):
         """
         # Return imputed data once set
         if self.model is None:
-            self._complete(**kwargs)
+            self._complete(train_index=train_index, **kwargs)
         return [self.model.transform(self.dataset.miss_data) for _ in range(m)]
 
 

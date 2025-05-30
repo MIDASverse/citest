@@ -91,6 +91,60 @@ class Dataset(BaseModel):
         self.full_data = None
 
 
+def kuha(
+    n: int,
+    R_by: str,
+    R_in: str,
+) -> Dataset:
+    """Generates a simple linear dataset with controllable missingness.
+
+    Missing values can be set to be a function of either Y or X, and to be
+    missing in those same columns too. This allows us to test every combination
+    of MAR/MNAR and CI/NCI type of data.
+
+    Args:
+        n: Number of observations
+        R_by: The column that determines missing values ('X' or 'Y')
+        R_in: The column that will contain the missing values ('X' or 'Y')
+
+    Returns:
+        A Dataset object with the full data, missing data, and
+
+    Raises:
+        ValueError: An error generating or applying missing values to the chosen column
+    """
+    X = np.random.normal(0, 1, n)
+    Y = np.random.normal(0, 1, n)
+
+    full_data = pd.DataFrame({"Y": Y, "X": X})
+
+    if R_by.upper() == "Y":
+        R_latent = Y
+    elif R_by.upper() == "X":
+        R_latent = X
+    else:
+        raise ValueError("R_by must be either 'Y' or 'X'")
+
+    R = 1 * R_latent < np.quantile(R_latent, 0.5)
+
+    if R_in.upper() == "X":
+        X[R == 0] = np.nan
+    elif R_in.upper() == "Y":
+        Y[R == 0] = np.nan
+    else:
+        raise ValueError("R_in must be either 'X' or 'Y'")
+
+    corrupt_data = pd.DataFrame({"Y": Y, "X": X})
+    mask = ~corrupt_data.isnull().to_numpy()
+
+    return Dataset(
+        miss_data=corrupt_data,
+        mask=mask,
+        full_data=full_data,
+        n=n,
+    )
+
+
 def v4_dgp(
     n: int,
     R_by: str,

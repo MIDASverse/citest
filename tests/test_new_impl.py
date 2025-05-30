@@ -7,16 +7,17 @@ from citest.imputer import *
 import numpy as np
 import pandas as pd
 
-B = 1
+B = 3
 ps = [np.nan for _ in range(B)]
 
-res = []
+res2 = []
+res3 = []
 for b in range(B):
     print(b)
     # test_data = v4_dgp(500, R_by="X", R_in="Y")
-    test_data = adult(2000, ci=True)
+    test_data = mushrooms(2000, ci=True)
     # test1 = test.RLTest(
-    test1 = mi_test.MITest2(
+    test_mi2 = mi_test.MITest2(
         test_data,
         imputer=MidasImputer,
         classifier=RandomForest,
@@ -26,11 +27,24 @@ for b in range(B):
         # imputer_args={"max_iter": 30},
         # imputer_args={},
     )
+    test_mi2.run()
+    res2.append(test_mi2.results)
 
-    test1.run()
-    res.append(test1.results)
-    print(test1.results["p"])
+    test_mi3 = mi_test.MITest3(
+        test_data,
+        imputer=MidasImputer,
+        classifier=RandomForest,
+        n_folds=10,
+        m=10,
+        classifier_args={"n_estimators": 20, "n_jobs": 8},
+        # imputer_args={"max_iter": 30},
+        # imputer_args={},
+    )
+    test_mi3.run()
+    res3.append(test_mi3.results)
 
-resdf = pd.DataFrame(res)
+test2_df = pd.DataFrame(res2)
+test3_df = pd.DataFrame(res3)
 
-print(np.mean(resdf["p"] < 0.05))
+(test2_df.p < 0.05).mean()
+(test3_df.p < 0.05).mean()
