@@ -95,6 +95,7 @@ def kuha(
     n: int,
     R_by: str,
     R_in: str,
+    inc_Z: bool = False,
 ) -> Dataset:
     """Generates a simple linear dataset with controllable missingness.
 
@@ -114,9 +115,14 @@ def kuha(
         ValueError: An error generating or applying missing values to the chosen column
     """
     X = np.random.normal(0, 1, n)
-    Y = np.random.normal(0, 1, n)
+    Z = np.random.normal(0, 1, n)
 
-    full_data = pd.DataFrame({"Y": Y, "X": X})
+    if inc_Z:
+        Y = 5 * (X + Z) + np.random.normal(0, 1, n)
+        full_data = pd.DataFrame({"Y": Y, "X": X, "Z": Z})
+    else:
+        Y = 5 * X + np.random.normal(0, 1, n)
+        full_data = pd.DataFrame({"Y": Y, "X": X})
 
     if R_by.upper() == "Y":
         R_latent = Y
@@ -125,7 +131,7 @@ def kuha(
     else:
         raise ValueError("R_by must be either 'Y' or 'X'")
 
-    R = 1 * R_latent < np.quantile(R_latent, 0.5)
+    R = 1 * (R_latent < np.quantile(R_latent, 0.5))
 
     if R_in.upper() == "X":
         X[R == 0] = np.nan
@@ -134,7 +140,11 @@ def kuha(
     else:
         raise ValueError("R_in must be either 'X' or 'Y'")
 
-    corrupt_data = pd.DataFrame({"Y": Y, "X": X})
+    if inc_Z:
+        corrupt_data = pd.DataFrame({"Y": Y, "X": X, "Z": Z})
+    else:
+        corrupt_data = pd.DataFrame({"Y": Y, "X": X})
+
     mask = ~corrupt_data.isnull().to_numpy()
 
     return Dataset(

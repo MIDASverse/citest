@@ -1,7 +1,7 @@
 from citest.data import Dataset
 from citest.imputer import MidasImputer
 from citest.classifier import RandomForest
-from citest.mi_test import MITest3
+from citest.mi_test import MITest2
 
 import pandas as pd
 import numpy as np
@@ -17,7 +17,7 @@ pol_dataset = Dataset()
 pol_dataset.make(pol_data, y="OUTCOME")  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest3(  # TODO: Update name of test function
+pol_test = MITest2(  # TODO: Update name of test function
     pol_dataset,
     imputer=MidasImputer,
     classifier=RandomForest,
