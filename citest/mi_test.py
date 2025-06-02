@@ -232,7 +232,7 @@ class MITest2:
             imp_datasets = imputer.get_m_complete(
                 m=self.m, train_index=train_idx, **self.imputer_args
             )
-
+            m_diffs = []
             for imp_data in imp_datasets:
                 # Check imputed data has same dimensions
                 assert imp_data.shape == self.dataset.miss_data.shape
@@ -257,20 +257,44 @@ class MITest2:
                 errXY = BCEclip(predsXY.flatten(), test_R.flatten())
 
                 xij = errXY - errX
-                diffs.append(xij)
+                m_diffs.append(xij)
+            diffs.append(m_diffs)
 
-        m = np.mean(diffs)
-        sigma2 = np.var(diffs, ddof=1)
+        m = np.mean(np.concatenate(diffs))
+
+        sigma2_m = np.var(np.concatenate(diffs), ddof=1)
+        sigma2_k = np.var([np.mean(d) for d in diffs], ddof=1)
+
         n_per_fold = self.dataset.n / self.n_folds
-        F = self.m * self.n_folds
+
+        F_m = self.m * self.n_folds
+        F_k = self.n_folds
         if m != 0:
-            t = m / np.sqrt(
-                (1 / F + n_per_fold / (self.dataset.n - n_per_fold)) * sigma2
+            t_m = m / np.sqrt(
+                (1 / F_m + n_per_fold / (self.dataset.n - n_per_fold)) * sigma2_m
             )
+
+            t_k = m / np.sqrt(
+                (1 / F_k + n_per_fold / (self.dataset.n - n_per_fold)) * sigma2_k
+            )
+
         else:
-            t = 0.0
-        p = 2 * stats.t.sf(np.abs(t), F - 1)
-        self.results = {"m": m, "sigma2": sigma2, "t": t, "p": p}
+            t_m = 0.0
+            t_k = 0.0
+        p_m = 2 * stats.t.sf(np.abs(t_m), F_m - 1)
+        p_k = 2 * stats.t.sf(np.abs(t_k), F_k - 1)
+
+        self.results = {
+            "m": m,
+            # fold-imputation level statistic
+            "sigma2_m": sigma2_m,
+            "t_m": t_m,
+            "p_m": p_m,
+            # fold-level statistic
+            "sigma2_k": sigma2_k,
+            "t_k": t_k,
+            "p_k": p_k,
+        }
 
     def summary(self):
         """Print a summary of the test results"""
