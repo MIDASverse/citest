@@ -118,7 +118,7 @@ def kuha(
     Z = np.random.normal(0, 1, n)
 
     if inc_Z:
-        Y = 5 * (X + Z) + np.random.normal(0, 1, n)
+        Y = 5 * X + np.random.normal(0, 1, n)
         full_data = pd.DataFrame({"Y": Y, "X": X, "Z": Z})
     else:
         Y = 5 * X + np.random.normal(0, 1, n)

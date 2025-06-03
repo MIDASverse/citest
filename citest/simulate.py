@@ -1,5 +1,4 @@
-import citest.test as test
-from citest.data import v4_dgp, MAR1
+from citest.mi_test import MITest2
 from citest.classifier import RandomForest
 from citest.imputer import *
 
@@ -16,23 +15,23 @@ def simulate(
     classifier_args={},
     B=200,
 ):
-    ps = [np.nan for _ in range(B)]
+    res = [np.nan for _ in range(B)]
 
     for b in range(B):
         print(b)
         test_data = DGP(n, **dgp_args)
 
-        test1 = test.RLTest(
+        test1 = MITest2(
             test_data,
             imputer=imputer,
             classifier=classifier,
             n_folds=10,
-            repetitions=10,
+            m=10,
             classifier_args={**classifier_args},
             imputer_args={**imputer_args},
         )
 
         test1.run()
-        ps[b] = test1.results["p"]
+        res[b] = test1.results
 
-    return ps
+    return res
