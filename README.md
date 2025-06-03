@@ -6,10 +6,10 @@ Our test provides a statistical estimate of whether an outcome is independent of
 
 ## Testing
 
-To use the test, download this repo. From the main directory, you can import the citest module:
+To use the test, download this repo. From the main directory, you can import the citest module (all names are temporary for the time being):
 
 ```python
-from citest.test import RLtest
+from citest.mi_test import MITest2
 from citest.data import MAR1
 from citest.classifier import RandomForest
 from citest.imputer import IterativeImputer
@@ -20,12 +20,12 @@ import numpy as np
 test_data = MAR1(100, ci = False)
 
 # declare the test object
-nci_ex = RLTest(
+nci_ex = MITest2(
     test_data,
     imputer=IterativeImputer,
     classifier=RandomForest,
     n_folds=10,
-    repetitions=10,
+    m=10,
     classifier_args={"n_estimators": 20},
     imputer_args={"max_iter": 30},
 )
