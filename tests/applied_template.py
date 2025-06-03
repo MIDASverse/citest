@@ -23,7 +23,7 @@ pol_test = MITest2(  # TODO: Update name of test function
     classifier=RandomForest,
     n_folds=10,
     m=10,
-    verbose=True,
+    # verbose=True,
     classifier_args={"n_estimators": 20, "n_jobs": 8},
 )
 
