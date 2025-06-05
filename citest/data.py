@@ -26,6 +26,7 @@ class Dataset(BaseModel):
     mask: np.ndarray = None
     n: int = None
     full_data: Optional[pd.DataFrame] = None
+    expl_vars: Optional[list] = None
 
     class Config:
         arbitrary_types_allowed = True

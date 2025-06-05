@@ -146,20 +146,16 @@ class MidasImputer(Imputer):
         midas_model = md.MIDAS(**kwargs)
         epochs = 250
         omit_first = True
-        if train_index is not None:
-            midas_model.fit(
-                self.dataset.miss_data.iloc[train_index, :].copy(),
-                epochs=epochs,
-                omit_first=omit_first,
-                verbose=True,
-            )
-        else:
-            midas_model.fit(
-                self.dataset.miss_data,
-                epochs=epochs,
-                omit_first=omit_first,
-                verbose=True,
-            )
+        midas_model.fit(
+            (
+                self.dataset.miss_data.iloc[train_index, :].copy()
+                if train_index is not None
+                else self.dataset.miss_data
+            ),
+            epochs=epochs,
+            omit_first=omit_first,
+            verbose=False,
+        )
 
         # take m=10 draws for completed data
         imps = list(midas_model.transform(m=10))
