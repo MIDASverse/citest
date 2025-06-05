@@ -29,7 +29,6 @@ for n in ns:
             imputer=MidasImputer,
             classifier=RandomForest,
             dgp_args={"ci": ci},
-            imputer_args={},
             classifier_args={"n_estimators": 20, "n_jobs": 8},
         )
 
