@@ -67,6 +67,17 @@ class CompleteImputer(Imputer):
         super().__init__(dataset)
         self.completed = self.dataset.full_data
 
+    def get_m_complete(self, m: int = 10, train_index=None, **kwargs) -> pd.DataFrame:
+        """Get m completed datasets
+
+        This method will return m completed datasets, if they have already
+        been imputed, otherwise it will call the hidden completion
+        method first.
+
+        """
+        # Return imputed data once set
+        return [self.completed for _ in range(m)]
+
 
 class NullImputer(Imputer):
     """Impute missing data with zeros

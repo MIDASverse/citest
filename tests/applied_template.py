@@ -5,16 +5,23 @@ from citest.mi_test import MITest2
 
 import pandas as pd
 import numpy as np
+import random
+
+# Set seed
+import torch
+np.random.seed(42)
+torch.manual_seed(42)
 
 # Load in the dataset using pandas
-pol_data = pd.read_csv("...")
+pol_data = pd.read_csv("/Users/ranjitlall/Library/CloudStorage/Dropbox/Ranjit's work/Harvard/Missing data/Missingness Tests/Applied data/AJPS/Clark and Dolan 2021/cd2021_mod1.csv")
 
 ## NOTE: Make sure the dataset columns have the correct types (int/float, boolean, category)
 
 # Define the dataset object
 pol_dataset = Dataset()
 # TODO: Allow for restricting variables for CI aspect only
-pol_dataset.make(pol_data, y="OUTCOME")  # You must specify the outcome variable
+pol_dataset.make(pol_data, y="count_pa")  # You must specify the outcome variable
+
 
 # Define the test object
 pol_test = MITest2(  # TODO: Update name of test function

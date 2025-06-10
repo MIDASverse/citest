@@ -277,6 +277,65 @@ def MAR1(
     )
 
 
+def MNAR1(
+    n: int,
+    ci: bool = True,
+) -> Dataset:
+    """Generates the MAR-1 missing data pattern from King (2001).
+
+    Args:
+        n: Number of observations
+
+    Returns:
+        A Dataset object
+
+    Raises:
+        ValueError: An error generating or applying missing values to the chosen column
+    """
+    data = np.random.multivariate_normal(
+        mean=[0, 0, 0, 0, 0],
+        cov=[
+            [1.0, -0.12, -0.1, 0.5, 0.1],
+            [-0.12, 1.0, 0.1, -0.6, 0.1],
+            [-0.1, 0.1, 1.0, -0.5, 0.1],
+            [0.5, -0.6, -0.5, 1.0, 0.1],
+            [0.1, 0.1, 0.1, 0.1, 1],
+        ],
+        size=n,
+    )
+
+    M = np.ndarray(data.shape, dtype=bool)
+    U1 = np.random.uniform(0, 1, n)
+
+    # Y and X4 are MCAR:
+    M[:, 0] = U1 < 0.85
+    M[:, 4] = U1 < 0.85
+
+    # X3 is always observed:
+    M[:, 3] = True
+
+    # X1 is MAR:
+    U2 = np.random.uniform(0, 1, n)
+    M[:, 1] = ~np.all([data[:, 3] < -1, U2 < 0.9], axis=0)
+
+    # X2 is MNAR but ci or MAR but nci
+    U3 = np.random.uniform(0, 1, n)
+    if ci:
+        M[:, 2] = ~np.all([data[:, 2] < -1, U3 < 0.9], axis=0)
+    else:
+        M[:, 2] = ~np.all([data[:, 0] < -1, U3 < 0.9], axis=0)  # missing by Y
+
+    corrupt_data = data.copy()
+    corrupt_data[~M] = np.nan
+
+    return Dataset(
+        miss_data=pd.DataFrame(corrupt_data),
+        mask=M,
+        full_data=pd.DataFrame(data),
+        n=n,
+    )
+
+
 def adult(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
 
     path = files("citest.data_examples").joinpath("us-census-income.csv")
