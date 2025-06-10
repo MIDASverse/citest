@@ -171,8 +171,8 @@ class MITest2:
     def __init__(
         self,
         dataset: Dataset,
-        imputer: Imputer,
-        classifier: CIClassifier,
+        imputer: Imputer = MidasImputer,
+        classifier: CIClassifier = RandomForest,
         n_folds: int = 10,
         m: int = 10,
         classifier_args: dict = {},
