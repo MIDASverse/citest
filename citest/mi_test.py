@@ -309,8 +309,8 @@ class MITest2:
                 f"Classifier: {self.classifier}\n"
                 f"----------------------------------------------\n"
                 f"Mean difference in BCE: {self.results['m']}\n"
-                f"p-value (fold--level): {self.results['p_k']}\n"
-                f"p-value (fold-imputation--level): {self.results['p_m']}\n"
+                f"Fold--level: t = {self.results['t_k']}; p-value = {self.results['p_k']}\n"
+                f"Fold-imputation--level: t = {self.results['t_m']}; {self.results['p_m']}\n"
                 f"----------------------------------------------\n"
             )
         else:

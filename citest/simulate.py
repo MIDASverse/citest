@@ -14,6 +14,8 @@ def simulate(
     classifier=RandomForest,
     classifier_args={},
     B=200,
+    n_folds=10,
+    m=10,
 ):
     res = [np.nan for _ in range(B)]
 
@@ -25,8 +27,8 @@ def simulate(
             test_data,
             imputer=imputer,
             classifier=classifier,
-            n_folds=10,
-            m=10,
+            n_folds=n_folds,
+            m=m,
             classifier_args={**classifier_args},
             imputer_args={**imputer_args},
         )
