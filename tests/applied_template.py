@@ -13,14 +13,14 @@ np.random.seed(42)
 torch.manual_seed(42)
 
 # Load in the dataset using pandas
-pol_data = pd.read_csv("/Users/ranjitlall/Library/CloudStorage/Dropbox/Ranjit's work/Harvard/Missing data/Missingness Tests/Applied data/AJPS/Clark and Dolan 2021/cd2021_mod1.csv")
+pol_data = pd.read_csv("/Users/ranjitlall/Library/CloudStorage/Dropbox/Ranjit's work/Harvard/Missing data/Missingness Tests/Applied data/AJPS/Aklin and Kern 2021/ak2021_mod3.csv")
 
 ## NOTE: Make sure the dataset columns have the correct types (int/float, boolean, category)
 
 # Define the dataset object
 pol_dataset = Dataset()
 # TODO: Allow for restricting variables for CI aspect only
-pol_dataset.make(pol_data, y="count_pa")  # You must specify the outcome variable
+pol_dataset.make(pol_data, y="finreform")  # You must specify the outcome variable
 
 
 # Define the test object
