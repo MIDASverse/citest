@@ -20,6 +20,7 @@ class Dataset(BaseModel):
         mask: A pandas DataFrame with the same shape as miss_data, with True where data is observed
         n: An integer with the number of observations in the data
         full_data: A pandas DataFrame with the full data (i.e. no missingness)
+        expl_vars: A list of column names specifying subset of columns used in analysis models (typically set using the `make` method).
     """
 
     miss_data: pd.DataFrame = None
@@ -28,19 +29,28 @@ class Dataset(BaseModel):
     full_data: Optional[pd.DataFrame] = None
     expl_vars: Optional[list] = None
 
+    # private vars:
+    _expl_vars: list = (
+        []
+    )  # private variable that will store correctly formatted one-hot encoded vars too
+
     class Config:
         arbitrary_types_allowed = True
 
     def __repr__(self):
-        return f"""
-            Dataset with {self.n} observations
-            Outcome: {self.miss_data.columns[0]}
-            
-            {np.sum(~self.mask)} missing values
-            """
 
-    @staticmethod
-    def _dummy(data: pd.DataFrame, drop_first=False) -> pd.DataFrame:
+        if self.miss_data is None:
+            return "Dataset not fit to data yet. Please use the `make` method to create a Dataset object."
+        else:
+            return f"""
+                Dataset with {self.n} observations
+                Outcome: {self.miss_data.columns[0]}
+                Explanatory variables: {self.expl_vars}
+                
+                {round(100*np.sum(~self.mask)/np.prod(self.mask.shape),1)}% missing values
+                """
+
+    def _dummy(self, data: pd.DataFrame, drop_first=False) -> pd.DataFrame:
         """Create a one-hot encoded version of the data.
 
         Args:
@@ -54,23 +64,37 @@ class Dataset(BaseModel):
 
         for col in data.columns:
             if col + "_nan" in data_wide.columns:
-                data_wide.loc[
-                    data[col].isnull(), data_wide.columns.str.startswith(col + "_")
-                ] = np.nan
+
+                exp_cols = data_wide.columns.str.startswith(col + "_")
+
+                if col in self.expl_vars:
+                    self._expl_vars.extend(
+                        data_wide.columns[
+                            exp_cols
+                            & ~data_wide.columns.str.endswith(
+                                "_nan"
+                            )  # drop na indicator from tracker
+                        ]
+                    )
+
+                data_wide.loc[data[col].isnull(), exp_cols] = np.nan
 
                 data_wide.drop(col + "_nan", axis=1, inplace=True)
 
+            elif col in self.expl_vars:
+                self._expl_vars.append(col)
+
         return data_wide
 
-    def make(self, data: pd.DataFrame, y=None, X=None, _onehot=True):
+    def make(self, data: pd.DataFrame, y: str, expl_vars=None, _onehot=True):
         """Create a Dataset object from a pandas DataFrame to be used for the RL test.
 
         Args:
             data: A pandas DataFrame with missing values (recorded as np.nan)
             y: A string with the name of the outcome variable. If not provided,
                 the first column will be assumed as the outcome.
-            X: A list of strings with the names of the independent variables. If not provided,
-                all columns except the outcome will be used.
+            expl_vars: A list of strings with the names of variables to be included in the conditional analysis. If not provided,
+                all columns except the outcome will be used. Note, more variables can be  used in the imputation stage.
             _onehot: A boolean indicating whether to one-hot encode the data (default: True).
                 Integer, float, and binary variables will not be encoded.
 
@@ -81,15 +105,30 @@ class Dataset(BaseModel):
                 "Data already exists -- please create a new Dataset object"
             )
 
-        if y is not None:
+        if y in data.columns:
             data = pd.concat([data[y], data.drop(y, axis=1)], axis=1)
+        else:
+            raise ValueError(
+                "Outcome variable not found in data. Please provide a valid outcome variable name."
+            )
 
-        data_wide = self._dummy(data) if _onehot else data
+        if expl_vars is not None:
+            self.expl_vars = expl_vars
+        else:
+            self.expl_vars = data.columns.tolist()[1:]
+
+        if _onehot:
+            data_wide = self._dummy(data)
+        else:
+            data_wide = data.copy()
+            self._expl_vars = self.expl_vars.copy()
 
         self.miss_data = data_wide
         self.mask = ~data_wide.isnull().to_numpy()
         self.n = data_wide.shape[0]
         self.full_data = None
+
+        self._expl_vars = data_wide.columns.get_indexer(self._expl_vars).tolist()
 
 
 def kuha(

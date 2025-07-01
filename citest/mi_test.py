@@ -197,6 +197,7 @@ class MITest2:
             f"    - Classifier: {self.classifier}\n"
             f"    - Folds: {self.n_folds}\n"
             f"    - Datasets: {self.m}\n"
+            f"    - No. of explanatory variables: {len(self.dataset.expl_vars)}\n"
         )
 
     def _get_cv(self):
@@ -233,15 +234,16 @@ class MITest2:
                 m=self.m, train_index=train_idx, **self.imputer_args
             )
             m_diffs = []
+            cols_idx = [0] + self.dataset._expl_vars
             for imp_data in imp_datasets:
                 # Check imputed data has same dimensions
                 assert imp_data.shape == self.dataset.miss_data.shape
 
-                train = imp_data.iloc[train_idx, :]
-                test = imp_data.iloc[test_idx, :]
+                train = imp_data.iloc[train_idx, cols_idx]
+                test = imp_data.iloc[test_idx, cols_idx]
 
-                train_R = 1 * self.dataset.mask[train_idx, :]
-                test_R = 1 * self.dataset.mask[test_idx, :]
+                train_R = 1 * self.dataset.mask[np.ix_(train_idx, cols_idx)]
+                test_R = 1 * self.dataset.mask[np.ix_(test_idx, cols_idx)]
 
                 class_seed = self.rng.integers(2**32 - 1)
                 modX = self.classifier(random_state=class_seed, **self.classifier_args)
