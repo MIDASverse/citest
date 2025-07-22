@@ -5,7 +5,7 @@ def BCEclip(
     p: np.array,
     y: np.array,
 ) -> float:
-    """Return mean binary cross-entropy loss with clipping
+    """Return observation-level binary cross-entropy loss with clipping
 
     Avoids numerical instability when taking the log of very small numbers.
 
@@ -24,12 +24,9 @@ def BCEclip(
     """
     assert p.shape == y.shape, "p and y must have the same shape"
 
-    with np.errstate(divide="ignore"):
-        clipped = np.mean(
-            -(
-                y * np.clip(np.log(p), a_min=-100, a_max=None)
-                + (1 - y) * np.clip(np.log(1 - p), a_min=-100, a_max=None)
-            )
-        )
+    eps = 1e-15
+    p_clipped = np.clip(p, eps, 1 - eps)
 
+    with np.errstate(divide="ignore"):
+        clipped = -(y * np.log(p_clipped) + (1 - y) * np.log(1 - p_clipped))
     return clipped

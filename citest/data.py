@@ -185,14 +185,10 @@ def kuha(
     else:
         corrupt_data = pd.DataFrame({"Y": Y, "X": X})
 
-    mask = ~corrupt_data.isnull().to_numpy()
-
-    return Dataset(
-        miss_data=corrupt_data,
-        mask=mask,
-        full_data=full_data,
-        n=n,
-    )
+    kuha_dataset = Dataset()
+    kuha_dataset.make(corrupt_data, y="Y")
+    kuha_dataset.full_data = pd.DataFrame(full_data)
+    return kuha_dataset
 
 
 def v4_dgp(
@@ -245,14 +241,11 @@ def v4_dgp(
     corrupt_data = pd.DataFrame(
         {"Y": Y, "X1": X1, "X2": X2, "X3": X3, "X4": X4, "X5": X5}
     )
-    mask = ~corrupt_data.isnull().to_numpy()
 
-    return Dataset(
-        miss_data=corrupt_data,
-        mask=mask,
-        full_data=full_data,
-        n=n,
-    )
+    v4_dataset = Dataset()
+    v4_dataset.make(corrupt_data, y="Y")
+    v4_dataset.full_data = pd.DataFrame(full_data)
+    return v4_dataset
 
 
 def MAR1(
@@ -308,12 +301,14 @@ def MAR1(
     corrupt_data = data.copy()
     corrupt_data[~M] = np.nan
 
-    return Dataset(
-        miss_data=pd.DataFrame(corrupt_data),
-        mask=M,
-        full_data=pd.DataFrame(data),
-        n=n,
+    MAR1_dataset = Dataset()
+    MAR1_dataset.make(
+        pd.DataFrame(corrupt_data, columns=["Y", "X1", "X2", "X3", "X4"]), y="Y"
     )
+
+    MAR1_dataset.full_data = pd.DataFrame(data, columns=["Y", "X1", "X2", "X3", "X4"])
+
+    return MAR1_dataset
 
 
 def MNAR1(
@@ -367,12 +362,14 @@ def MNAR1(
     corrupt_data = data.copy()
     corrupt_data[~M] = np.nan
 
-    return Dataset(
-        miss_data=pd.DataFrame(corrupt_data),
-        mask=M,
-        full_data=pd.DataFrame(data),
-        n=n,
+    MNAR1_dataset = Dataset()
+    MNAR1_dataset.make(
+        pd.DataFrame(corrupt_data, columns=["Y", "X1", "X2", "X3", "X4"]), y="Y"
     )
+
+    MNAR1_dataset.full_data = pd.DataFrame(data, columns=["Y", "X1", "X2", "X3", "X4"])
+
+    return MNAR1_dataset
 
 
 def adult(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
@@ -392,7 +389,8 @@ def adult(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
     adult_compl["income"] = adult_compl["income"].astype("int64")
 
     a_dataset = Dataset()
-    adult_wide = a_dataset._dummy(adult_compl)
+    a_dataset.make(adult_compl, y="income")
+    adult_wide = a_dataset.miss_data.copy()
 
     ed_cols = list(filter(compile("^education_").match, adult_wide.columns.tolist()))
 
@@ -418,8 +416,9 @@ def adult(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
         ] = np.nan
 
     # Make dataset object
-    a_dataset.make(adult_miss, y="income")
-    a_dataset.full_data = a_dataset._dummy(adult_compl)
+    a_dataset.full_data = adult_wide
+    a_dataset.miss_data = adult_miss
+    a_dataset.mask = ~adult_miss.isnull().to_numpy()
 
     assert a_dataset.full_data.shape == a_dataset.miss_data.shape
     assert (a_dataset.full_data.columns == a_dataset.miss_data.columns).all()
@@ -446,12 +445,15 @@ def mushrooms(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
 
     # Make dataset object
     m_dataset = Dataset()
-    m_wide = m_dataset._dummy(mushrooms_compl)
+    m_dataset.make(mushrooms_compl, y="y")
+    m_dataset.full_data = m_dataset.miss_data.copy()
 
-    odor_cols = list(filter(compile("^X5_").match, m_wide.columns.tolist()))
+    odor_cols = list(
+        filter(compile("^X5_").match, m_dataset.full_data.columns.tolist())
+    )
 
     # Missing pattern
-    mushrooms_miss = m_wide.copy().reset_index(drop=True)
+    mushrooms_miss = m_dataset.miss_data.copy().reset_index(drop=True)
 
     if not ci:
         for i in range(mushrooms_miss.shape[0]):
@@ -475,8 +477,8 @@ def mushrooms(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
         ] = np.nan
 
     # Make dataset object
-    m_dataset.make(mushrooms_miss, y="y")
-    m_dataset.full_data = m_dataset._dummy(mushrooms_compl)
+    m_dataset.miss_data = mushrooms_miss
+    m_dataset.mask = ~m_dataset.miss_data.isnull().to_numpy()
 
     assert m_dataset.full_data.shape == m_dataset.miss_data.shape
     assert (m_dataset.full_data.columns == m_dataset.miss_data.columns).all()

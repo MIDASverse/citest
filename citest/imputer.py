@@ -154,8 +154,12 @@ class MidasImputer(Imputer):
         super().__init__(dataset)
 
     def _complete(self, train_index=None, **kwargs):
+
+        if "epochs" in kwargs:
+            epochs = kwargs.pop("epochs")
+        else:
+            epochs = 250
         midas_model = md.MIDAS(**kwargs)
-        epochs = 250
         omit_first = True
         midas_model.fit(
             (

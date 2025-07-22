@@ -33,7 +33,7 @@ class TestDataset(unittest.TestCase):
     def test_make_expl_vars(self):
 
         self.assertEqual(self.dataset.expl_vars, ["A", "C"])
-        self.assertTrue((self.dataset._expl_vars == [1, 4, 5, 6]).all())
+        self.assertTrue(self.dataset._expl_vars == [1, 4, 5, 6])
 
     def test_make_float_preservation(self):
         self.assertIsInstance(self.dataset.miss_data.A, pd.Series)
@@ -63,7 +63,7 @@ class TestDataset(unittest.TestCase):
         citest_dataset.make(data=self.fake_data, y="Y")
 
         self.assertEqual(citest_dataset.expl_vars, ["A", "B", "C", "D"])
-        self.assertTrue((citest_dataset._expl_vars == [1, 2, 4, 5, 6, 3]).all())
+        self.assertTrue(citest_dataset._expl_vars == [1, 2, 4, 5, 6, 3])
 
 
 if __name__ == "__main__":
