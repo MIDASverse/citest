@@ -426,6 +426,67 @@ def adult(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
     return a_dataset
 
 
+def adult_mnar(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
+
+    path = files("citest.data_examples").joinpath("us-census-income.csv")
+    adult = pd.read_csv(path)
+
+    idxs = np.random.choice(adult.shape[0], n)
+    adult_compl = adult.iloc[idxs, :]
+
+    adult_compl.loc[:, "income"] = adult_compl["income"].map({"<=50K": 0, ">50K": 1})
+
+    adult_compl = pd.concat(
+        [adult_compl["income"], adult_compl.drop("income", axis=1)], axis=1
+    ).reset_index(drop=True)
+
+    adult_compl["income"] = adult_compl["income"].astype("int64")
+
+    adult_sex = adult_compl["sex"]
+    adult_compl.drop("sex", axis=1, inplace=True)
+
+    a_dataset = Dataset()
+    a_dataset.make(adult_compl, y="income")
+    adult_wide = a_dataset.miss_data.copy()
+
+    ed_cols = list(filter(compile("^education_").match, adult_wide.columns.tolist()))
+
+    # Missing pattern
+    adult_miss = adult_wide.copy()
+
+    if not ci:  # MNAR and NCI
+        for i in range(adult_miss.shape[0]):
+            if (
+                adult_miss["income"].iloc[i] == 1
+                and adult_sex[i] == "Male"
+                and np.random.rand() < 0.9
+            ):
+                adult_miss.loc[i, ed_cols] = pd.NA
+
+    else:  # MNAR and CI
+        for i in range(adult_miss.shape[0]):
+            if adult_sex[i] == "Male" == 1 and np.random.rand() < 0.273:
+                adult_miss.loc[i, ed_cols] = pd.NA
+
+    for c in np.random.choice(
+        a=adult_miss.shape[1] - 1,
+        size=int(adult_miss.shape[1] * mcar_prop),
+    ):
+        adult_miss.iloc[
+            np.random.choice(adult_miss.shape[0], int(adult_miss.shape[0] * 0.5)), c + 1
+        ] = np.nan
+
+    # Make dataset object
+    a_dataset.full_data = adult_wide
+    a_dataset.miss_data = adult_miss
+    a_dataset.mask = ~adult_miss.isnull().to_numpy()
+
+    assert a_dataset.full_data.shape == a_dataset.miss_data.shape
+    assert (a_dataset.full_data.columns == a_dataset.miss_data.columns).all()
+
+    return a_dataset
+
+
 def mushrooms(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
 
     path = files("citest.data_examples").joinpath("agaricus-lepiota.data")
