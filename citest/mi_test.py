@@ -296,18 +296,15 @@ class MITest2:
         sigma2_m = np.var(np.concatenate(diffs), ddof=1)
         sigma2_k = np.var([np.mean(d) for d in diffs], ddof=1)
 
-        n_per_fold = self.dataset.n / self.n_folds
+        n = len(sample_idxs)
+        n_per_fold = n / self.n_folds
 
         F_m = self.m * self.n_folds
         F_k = self.n_folds
         if m != 0:
-            t_m = m / np.sqrt(
-                (1 / F_m + n_per_fold / (self.dataset.n - n_per_fold)) * sigma2_m
-            )
+            t_m = m / np.sqrt((1 / F_m + n_per_fold / (n - n_per_fold)) * sigma2_m)
 
-            t_k = m / np.sqrt(
-                (1 / F_k + n_per_fold / (self.dataset.n - n_per_fold)) * sigma2_k
-            )
+            t_k = m / np.sqrt((1 / F_k + n_per_fold / (n - n_per_fold)) * sigma2_k)
 
         else:
             t_m = 0.0

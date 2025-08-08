@@ -372,10 +372,31 @@ def MNAR1(
     return MNAR1_dataset
 
 
-def adult(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
+def adult(n=1000, ci=True, mcar_prop=0.5, k=None) -> Dataset:
 
     path = files("citest.data_examples").joinpath("us-census-income.csv")
     adult = pd.read_csv(path)
+
+    if k is not None:
+        # Ensure these columns are always included
+        base_vars = ["income", "education", "age"]
+        other_vars = [col for col in adult.columns if col not in base_vars]
+
+        # Calculate how many additional columns to select
+        k_remaining = max(0, k - len(base_vars))
+
+        # Randomly select additional columns
+        if k_remaining > 0 and len(other_vars) > 0:
+            selected_cols = np.random.choice(
+                a=other_vars, size=min(k_remaining, len(other_vars)), replace=False
+            )
+            # Combine base columns with randomly selected ones
+            selected_cols = base_vars + selected_cols.tolist()
+        else:
+            selected_cols = base_vars
+
+        # Filter adult dataframe to only include selected columns
+        adult = adult[selected_cols]
 
     idxs = np.random.choice(adult.shape[0], n)
     adult_compl = adult.iloc[idxs, :]
