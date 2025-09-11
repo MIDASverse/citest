@@ -303,9 +303,7 @@ class MITest2:
         F_k = self.n_folds
         if m != 0:
             t_m = m / np.sqrt((1 / F_m + n_per_fold / (n - n_per_fold)) * sigma2_m)
-
             t_k = m / np.sqrt((1 / F_k + n_per_fold / (n - n_per_fold)) * sigma2_k)
-
         else:
             t_m = 0.0
             t_k = 0.0
@@ -338,7 +336,7 @@ class MITest2:
                 f"----------------------------------------------\n"
                 f"Mean difference in BCE: {self.results['m']}\n"
                 f"Fold--level: t = {self.results['t_k']}; p-value = {self.results['p_k']}\n"
-                f"Fold-imputation--level: t = {self.results['t_m']}; {self.results['p_m']}\n"
+                # f"Fold-imputation--level: t = {self.results['t_m']}; {self.results['p_m']}\n"
                 f"----------------------------------------------\n"
             )
         else:

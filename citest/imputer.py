@@ -155,12 +155,20 @@ class MidasImputer(Imputer):
 
     def _complete(self, train_index=None, **kwargs):
 
+        # allow manual epochs
         if "epochs" in kwargs:
             epochs = kwargs.pop("epochs")
         else:
             epochs = 250
+
+        # for testing: do results improve if we allow Y in imputation?
+        if "omit_first" in kwargs:
+            omit_first = kwargs.pop("omit_first")
+        else:
+            omit_first = True
+
         midas_model = md.MIDAS(**kwargs)
-        omit_first = True
+
         midas_model.fit(
             (
                 self.dataset.miss_data.iloc[train_index, :].copy()
