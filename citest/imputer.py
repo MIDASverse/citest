@@ -102,7 +102,7 @@ class IterativeImputer(Imputer):
     the test module.
 
     `max_iter` is an important parameter to consider when using this imputer.
-    If you find that the imputer reports not converging, try increasing this
+    If you find that the imputer does not converge, try increasing this
     value.
     """
 
@@ -161,11 +161,10 @@ class MidasImputer(Imputer):
         else:
             epochs = 250
 
-        # for testing: do results improve if we allow Y in imputation?
         if "omit_first" in kwargs:
             omit_first = kwargs.pop("omit_first")
         else:
-            omit_first = True
+            omit_first = False
 
         midas_model = md.MIDAS(**kwargs)
 

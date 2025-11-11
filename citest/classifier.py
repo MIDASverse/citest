@@ -45,16 +45,25 @@ class RandomForest(CIClassifier):
 
     def __init__(self, **kwargs):
         super().__init__()
-        self.model = RandomForestClassifier(**kwargs, max_features=None)
+
+        # add lower than sklearn default for n_estimators
+        if "n_estimators" in kwargs:
+            n_estimators = kwargs.pop("n_estimators")
+        else:
+            n_estimators = 20
+
+        self.model = RandomForestClassifier(
+            **kwargs, n_estimators=n_estimators, max_features=None
+        )
 
     def _fit(self, X, y):
 
         self.model.fit(X, y)
 
     def _predict(self, X):
-        return np.array(
-            [
-                pred[:, 1] if pred.shape[1] > 1 else pred[:, 0]  # probability of R = 1
-                for pred in self.model.predict_proba(X)
-            ]
-        )
+        probas = [
+            pred[:, 1] if pred.shape[1] > 1 else pred[:, 0]  # probability of R = 1
+            for pred in self.model.predict_proba(X)
+        ]
+
+        return np.column_stack(probas)

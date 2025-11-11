@@ -1,4 +1,4 @@
-from citest.mi_test import MITest2
+from citest.test import CIMissTest
 from citest.classifier import RandomForest
 from citest.imputer import *
 
@@ -23,7 +23,7 @@ def simulate(
         print(b)
         test_data = DGP(n, **dgp_args)
 
-        test1 = MITest2(
+        test1 = CIMissTest(
             test_data,
             imputer=imputer,
             classifier=classifier,

@@ -1,7 +1,7 @@
 from citest.data import Dataset
 from citest.imputer import MidasImputer
 from citest.classifier import RandomForest
-from citest.mi_test import MITest2
+from citest import CIMissTest
 
 import pandas as pd
 import numpy as np
@@ -9,7 +9,8 @@ import random
 
 # Set seed
 import torch
-
+np.random.seed(42)
+torch.manual_seed(42)
 
 ##########################
 ## Clark and Dolan 2021 ##
@@ -28,11 +29,11 @@ pol_data = pd.read_csv(
 pol_dataset = Dataset()
 pol_dataset.make(
     pol_data, y="count_pa", expl_vars=["absidealimportantdiff", "board", "colony", "unsc", "USaid", "CHaid", "gdppc", "dservtoGDP", "dshorttoexports", "inflation", "debttoGDP", "FDItoGDP", "polity2", "openness", "war", "elec", "IMF", "crisis", "ccode"]
-)  # You must specify the outcome variable
+)
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset,
 #    imputer=MidasImputer,
 #    classifier=RandomForest,
@@ -42,8 +43,6 @@ pol_test = MITest2(
 #    imputer_args={"hidden_layers": [8, 4, 2], "epochs": 500},
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -58,12 +57,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -83,12 +80,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -108,12 +103,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -133,12 +126,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -163,12 +154,10 @@ pol_dataset.make(
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -183,12 +172,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -203,12 +190,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -233,12 +218,10 @@ pol_dataset.make(
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -253,12 +236,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -273,12 +254,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -293,12 +272,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -307,7 +284,7 @@ pol_test.summary()  # Will print a nice summary of results
 #################
 
 # Load in the dataset using pandas
-pol_data = pd.read_stata(
+pol_data = pd.read_csv(
     "/Users/ranjitlall/Library/CloudStorage/Dropbox/Ranjit's work/Harvard/Missing data/Missingness Tests/Applied data/APSR/Hansen 2022/h2022_full.csv"
 )
 
@@ -323,12 +300,10 @@ pol_dataset.make(
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -343,12 +318,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -363,12 +336,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -394,12 +365,10 @@ pol_dataset.make(
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -414,12 +383,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -434,12 +401,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -454,12 +419,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -474,12 +437,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -504,12 +465,10 @@ pol_dataset.make(
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -524,12 +483,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -544,12 +501,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -559,7 +514,7 @@ pol_test.summary()  # Will print a nice summary of results
 
 # Load in the dataset using pandas
 pol_data = pd.read_csv(
-    "/Users/ranjitlall/Library/CloudStorage/Dropbox/Ranjit's work/Harvard/Missing data/Missingness Tests/Applied data/AJPS/Mueller 2024/m2024_full.csv"
+    "/Users/ranjitlall/Library/CloudStorage/Dropbox/Ranjit's work/Harvard/Missing data/Missingness Tests/Applied data/AJPS/Mueller 2024/m2024_full.csv", encoding='latin-1'
 )
 
 # Define the dataset object
@@ -570,12 +525,10 @@ pol_dataset.make(
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -600,12 +553,10 @@ pol_dataset.make(
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -620,12 +571,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -640,12 +589,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -670,12 +617,10 @@ pol_dataset.make(
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -690,12 +635,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -710,12 +653,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -740,12 +681,10 @@ pol_dataset.make(
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -771,12 +710,10 @@ pol_dataset.make(
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -791,12 +728,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -821,12 +756,10 @@ pol_dataset.make(
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -851,12 +784,10 @@ pol_dataset.make(
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -881,12 +812,10 @@ pol_dataset.make(
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -911,12 +840,10 @@ pol_dataset.make(
 
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
@@ -931,12 +858,10 @@ pol_dataset.make(
 )  # You must specify the outcome variable
 
 # Define the test object
-pol_test = MITest2(
+pol_test = CIMissTest(
     pol_dataset
 )
 
-np.random.seed(42)
-torch.manual_seed(42)
 pol_test.run()  # Will run k * m tests
 pol_test.summary()  # Will print a nice summary of results
 
