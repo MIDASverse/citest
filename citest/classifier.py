@@ -61,9 +61,14 @@ class RandomForest(CIClassifier):
         self.model.fit(X, y)
 
     def _predict(self, X):
-        probas = [
-            pred[:, 1] if pred.shape[1] > 1 else pred[:, 0]  # probability of R = 1
-            for pred in self.model.predict_proba(X)
+        probas = self.model.predict_proba(X)
+        prob_list = probas if isinstance(probas, list) else [probas]
+
+        cols = [
+            (
+                p[:, 1] if p.ndim > 1 and p.shape[1] > 1 else p[:, 0]
+            )  # probability of R = 1
+            for p in prob_list
         ]
 
-        return np.column_stack(probas)
+        return np.column_stack(cols)

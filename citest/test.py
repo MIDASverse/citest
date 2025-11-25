@@ -61,6 +61,12 @@ class CIMissTest:
         )
 
     def _get_cv(self):
+
+        if self.n_folds > self.dataset.n:
+            raise ValueError(
+                f"Number of folds ({self.n_folds}) cannot exceed number of samples ({self.dataset.n})"
+            )
+
         return KFold(
             n_splits=self.n_folds,
             shuffle=True,
@@ -106,8 +112,10 @@ class CIMissTest:
                 test_R = 1 * self.dataset.mask[np.ix_(test_idx, cols_idx)]
 
                 class_seed = self.rng.integers(2**32 - 1)
-                modX = self.classifier(random_state=class_seed, **self.classifier_args)
-                modXY = self.classifier(random_state=class_seed, **self.classifier_args)
+                clf_kwargs = dict(self.classifier_args)
+                clf_kwargs.pop("random_state", None)  # enforce rng-driven seed only
+                modX = self.classifier(random_state=class_seed, **clf_kwargs)
+                modXY = self.classifier(random_state=class_seed, **clf_kwargs)
 
                 modX.fit(X=train.iloc[:, 1:], y=train_R)
                 modXY.fit(X=train, y=train_R)
@@ -168,149 +176,6 @@ class CIMissTest:
             )
         else:
             raise ValueError("Please run the test before calling summary")
-
-    # def run_with_permutations(self, S: int = 200):
-    #     """
-    #     Runs the test and computes a permutation-calibrated empirical p-value.
-    #     Reuses the same CV folds, imputations, and partial-model BCE across permutations.
-    #     """
-    #     cv = self._get_cv()
-
-    #     # Same sampling cap as run()
-    #     if self.dataset.miss_data.shape[0] > 2000:
-    #         sample_idxs = self.rng.choice(
-    #             self.dataset.miss_data.shape[0], size=2000, replace=False
-    #         )
-    #     else:
-    #         sample_idxs = np.arange(self.dataset.miss_data.shape[0])
-
-    #     # folds reused across permutations
-    #     folds = [(sample_idxs[tr], sample_idxs[te]) for tr, te in cv.split(sample_idxs)]
-
-    #     cache = []  # per fold, per imputation entry with data + cached partial BCE
-    #     diffs_obs = []  # observed ΔBCE per (fold, m)
-    #     fold_sizes = []
-
-    #     # --------- observed pass: impute once per fold, fit both models, cache partial ---------
-    #     for train_idx, test_idx in folds:
-    #         imputer = self.imputer(dataset=self.dataset)
-    #         imp_datasets = imputer.get_m_complete(
-    #             m=self.m, train_index=train_idx, **self.imputer_args
-    #         )
-    #         cols_idx = [0] + self.dataset._expl_vars  # 0 == Y column
-    #         fold_entries = []
-    #         fold_sizes.append(len(test_idx))
-
-    #         for imp_data in imp_datasets:
-    #             assert imp_data.shape == self.dataset.miss_data.shape
-
-    #             train = imp_data.iloc[train_idx, cols_idx].copy()
-    #             test = imp_data.iloc[test_idx, cols_idx].copy()
-
-    #             train_R = 1 * self.dataset.mask[np.ix_(train_idx, cols_idx)]
-    #             test_R = 1 * self.dataset.mask[np.ix_(test_idx, cols_idx)]
-
-    #             class_seed = self.rng.integers(2**32 - 1)
-    #             modX = self.classifier(random_state=class_seed, **self.classifier_args)
-    #             modXY = self.classifier(random_state=class_seed, **self.classifier_args)
-
-    #             # Partial (X only)
-    #             modX.fit(X=train.iloc[:, 1:], y=train_R)
-    #             predsX = modX.predict(test.iloc[:, 1:])
-    #             errX = BCEclip(predsX.flatten(), test_R.flatten())
-    #             bce_part = np.mean(errX)
-
-    #             # Full (X + Y)
-    #             modXY.fit(X=train, y=train_R)
-    #             predsXY = modXY.predict(test)
-    #             errXY = BCEclip(predsXY.flatten(), test_R.flatten())
-    #             delta_obs = np.mean(errXY) - bce_part
-    #             diffs_obs.append(delta_obs)
-
-    #             fold_entries.append(
-    #                 {
-    #                     "train": train,
-    #                     "test": test,
-    #                     "train_R": train_R,
-    #                     "test_R": test_R,
-    #                     "bce_part": bce_part,
-    #                     "class_seed": class_seed,
-    #                 }
-    #             )
-
-    #         cache.append(fold_entries)
-
-    #     # --------- analytic NB-corrected t and p (same logic as run()) ----------
-    #     diffs_obs = np.array(diffs_obs).reshape(self.n_folds, self.m)
-    #     mu_obs = diffs_obs.mean()
-    #     fold_means = diffs_obs.mean(axis=1)
-    #     sigma2_k = np.var(fold_means, ddof=1)
-
-    #     n = len(sample_idxs)
-    #     n_per_fold = n / self.n_folds
-    #     F_k = self.n_folds
-
-    #     if mu_obs != 0:
-    #         t_obs = mu_obs / np.sqrt(
-    #             (1 / F_k + n_per_fold / (n - n_per_fold)) * sigma2_k
-    #         )
-    #     else:
-    #         t_obs = 0.0
-
-    #     p_obs_onesided = stats.t.sf(t_obs, F_k - 1)
-    #     p_obs_twosided = 2 * stats.t.sf(np.abs(t_obs), F_k - 1)
-
-    #     # --------- permutations: permute Y in TRAIN ONLY; reuse partial BCE ---------
-    #     t_perm = np.empty(S, dtype=float)
-
-    #     for s in range(S):
-    #         deltas_s = []
-
-    #         for f_idx in range(self.n_folds):
-    #             for m_idx in range(self.m):
-    #                 entry = cache[f_idx][m_idx]
-
-    #                 # Permute Y within the training table
-    #                 train_perm = entry["train"].copy()
-    #                 y_perm = train_perm.iloc[:, 0].to_numpy()
-    #                 self.rng.shuffle(y_perm)
-    #                 train_perm.iloc[:, 0] = y_perm
-
-    #                 modXY = self.classifier(
-    #                     random_state=entry["class_seed"], **self.classifier_args
-    #                 )
-    #                 modXY.fit(X=train_perm, y=entry["train_R"])
-
-    #                 predsXY = modXY.predict(entry["test"])
-    #                 errXY = BCEclip(predsXY.flatten(), entry["test_R"].flatten())
-    #                 delta_s = np.mean(errXY) - entry["bce_part"]
-    #                 deltas_s.append(delta_s)
-
-    #         deltas_s = np.array(deltas_s).reshape(self.n_folds, self.m)
-    #         mu_s = deltas_s.mean()
-    #         fold_means_s = deltas_s.mean(axis=1)
-    #         sigma2_s = np.var(fold_means_s, ddof=1)
-
-    #         if mu_s != 0:
-    #             t_s = mu_s / np.sqrt(
-    #                 (1 / F_k + n_per_fold / (n - n_per_fold)) * sigma2_s
-    #             )
-    #         else:
-    #             t_s = 0.0
-
-    #         t_perm[s] = t_s
-
-    #     p_emp = (1 + np.sum(t_perm >= t_obs)) / (S + 1)
-
-    #     self.results = {
-    #         "m": mu_obs,
-    #         "sigma2_k": sigma2_k,
-    #         "t_k": t_obs,
-    #         "p_k": p_obs_onesided,
-    #         "p_perm": p_emp,
-    #         "t_perm": t_perm,
-    #         "S": s,
-    #     }
 
 
 # class RLTest:
