@@ -340,7 +340,7 @@ def single_mnar(
     X3 = np.random.normal(0, 1, n)
     X4 = np.random.normal(0, 1, n)
     Z = np.random.normal(0, 1, n)
-    Y = 5 * (X1 + X2 + X3 + X4) + np.random.normal(0, 1, n)
+    Y = 5 * (X1 + X3 + X4) + np.random.normal(0, 1, n)
 
     full_data = pd.DataFrame({"Y": Y, "X1": X1, "X2": X2, "X3": X3, "X4": X4})
 
@@ -392,7 +392,7 @@ def MAR1(
     U1 = np.random.uniform(0, 1, n)
 
     # Y and X4 are MCAR:
-    M[:, 0] = U1 < 0.85
+    M[:, 0] = True  # fully observed to preserve MAR condition
     M[:, 4] = U1 < 0.85
 
     # X3 is always observed:
@@ -404,8 +404,7 @@ def MAR1(
 
     # X2 is MAR but variable:
     U3 = np.random.uniform(0, 1, n)
-    R_latent = data[:, 1] if ci else data[:, 0]
-    # M[:, 2] = ~np.all([R_latent < np.quantile(R_latent, 0.5), U3 < 0.9], axis=0)
+    R_latent = data[:, 3] if ci else data[:, 0]
     M[:, 2] = ~np.all([R_latent < np.quantile(R_latent, 0.2), U3 < 0.9], axis=0)
 
     corrupt_data = data.copy()
@@ -451,8 +450,10 @@ def MNAR1(
     M = np.ndarray(data.shape, dtype=bool)
     U1 = np.random.uniform(0, 1, n)
 
-    # Y is MCAR:
-    M[:, 0] = U1 < 0.85
+    # Y is always observed:
+    M[:, 0] = True
+    # X4 is MCAR
+    M[:, 4] = U1 < 0.85
 
     # X3 is always observed:
     M[:, 3] = True
@@ -463,21 +464,19 @@ def MNAR1(
 
     # X2 is MNAR but CIMDA/CDMDA:
     U3 = np.random.uniform(0, 1, n)
-    R_latent = data[:, 4] if ci else data[:, 4] + 2 * data[:, 0]
+    Z = np.random.normal(0, 1, n)
+    R_latent = Z if ci else Z + 2 * data[:, 0]
     M[:, 2] = ~np.all([R_latent < np.quantile(R_latent, 0.2), U3 < 0.9], axis=0)
-
-    data = data[:, :4]  # remove X4 to make it MNAR
-    M = M[:, :4]  # remove X4 from mask
 
     corrupt_data = data.copy()
     corrupt_data[~M] = np.nan
 
     MNAR1_dataset = Dataset()
     MNAR1_dataset.make(
-        pd.DataFrame(corrupt_data, columns=["Y", "X1", "X2", "X3"]), y="Y"
+        pd.DataFrame(corrupt_data, columns=["Y", "X1", "X2", "X3", "X4"]), y="Y"
     )
 
-    MNAR1_dataset.full_data = pd.DataFrame(data, columns=["Y", "X1", "X2", "X3"])
+    MNAR1_dataset.full_data = pd.DataFrame(data, columns=["Y", "X1", "X2", "X3", "X4"])
 
     return MNAR1_dataset
 
