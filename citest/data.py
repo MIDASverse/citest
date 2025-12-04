@@ -28,6 +28,7 @@ class Dataset(BaseModel):
     n: int = None
     full_data: Optional[pd.DataFrame] = None
     expl_vars: Optional[list] = None
+    weights: Optional[np.ndarray] = None
 
     # private vars:
     _expl_vars: list = (
@@ -127,6 +128,10 @@ class Dataset(BaseModel):
         self.mask = ~data_wide.isnull().to_numpy()
         self.n = data_wide.shape[0]
         self.full_data = None
+
+        miss = self.miss_data.isnull().mean(axis=0).to_numpy()
+        raw_wgts = miss * (1 - miss)
+        self.weights = raw_wgts / raw_wgts.sum()
 
         self._expl_vars = data_wide.columns.get_indexer(self._expl_vars).tolist()
 

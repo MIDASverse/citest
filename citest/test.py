@@ -129,8 +129,19 @@ class CIMissTest:
                 errX = BCEclip(predsX, test_R)
                 errXY = BCEclip(predsXY, test_R)
 
-                xij = np.mean(errX) - np.mean(errXY)
-                m_diffs.append(xij)
+                errX_mean = errX.mean(axis=0)
+                errXY_mean = errXY.mean(axis=0)
+
+                # PREVIOUS CODE
+                # xij = np.mean(errX) - np.mean(errXY)
+                # m_diffs.append(xij)
+
+                # NEW WEIGHTED CODE
+                w = getattr(self.dataset, "weights", None)
+                if w is None:
+                    w = np.ones_like(errX_mean) / len(errX_mean)
+                m_diffs.append(np.sum(w * (errX_mean - errXY_mean)))
+
             diffs.append(m_diffs)
 
         m = np.mean(np.concatenate(diffs))
