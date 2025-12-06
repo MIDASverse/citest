@@ -4,6 +4,7 @@ import numpy as np
 def BCEclip(
     p: np.array,
     y: np.array,
+    sample_weight=None,
 ) -> float:
     """Return observation-level binary cross-entropy loss with clipping
 
@@ -14,6 +15,7 @@ def BCEclip(
     Args:
         p: Predicted probabilities
         y: True binary labels
+        sample_weight: array-like, same shape or broadcastable, to weight entries
 
     Returns:
         Clipped binary cross-entropy loss value for input
@@ -27,6 +29,8 @@ def BCEclip(
     eps = 1e-15
     p_clipped = np.clip(p, eps, 1 - eps)
 
+    w = 1.0 if sample_weight is None else sample_weight
+
     with np.errstate(divide="ignore"):
         clipped = -(y * np.log(p_clipped) + (1 - y) * np.log(1 - p_clipped))
-    return clipped
+    return clipped * w

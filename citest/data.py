@@ -301,7 +301,7 @@ def single_mar(
     X3 = np.random.normal(0, 1, n)
     X4 = np.random.normal(0, 1, n)
     X5 = np.random.normal(0, 1, n)
-    Y = 5 * (X1 + X2 + X3 + X4 + X5) + np.random.normal(0, 1, n)
+    Y = X1 + X2 + X3 + X4 + X5 + np.random.normal(0, 1, n)
 
     full_data = pd.DataFrame({"Y": Y, "X1": X1, "X2": X2, "X3": X3, "X4": X4, "X5": X5})
 
@@ -345,7 +345,7 @@ def single_mnar(
     X3 = np.random.normal(0, 1, n)
     X4 = np.random.normal(0, 1, n)
     Z = np.random.normal(0, 1, n)
-    Y = 5 * (X1 + X3 + X4) + np.random.normal(0, 1, n)
+    Y = X1 + X2 + X3 + X4 + np.random.normal(0, 1, n)
 
     full_data = pd.DataFrame({"Y": Y, "X1": X1, "X2": X2, "X3": X3, "X4": X4})
 
