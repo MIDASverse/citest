@@ -87,6 +87,11 @@ class Dataset(BaseModel):
 
         return data_wide
 
+    def _get_wgts(self):
+        miss = self.miss_data.isnull().mean(axis=0).to_numpy()
+        raw_wgts = miss * (1 - miss)
+        self.weights = raw_wgts / raw_wgts.sum()
+
     def make(self, data: pd.DataFrame, y: str, expl_vars=None, _onehot=True):
         """Create a Dataset object from a pandas DataFrame to be used for the RL test.
 
@@ -129,9 +134,7 @@ class Dataset(BaseModel):
         self.n = data_wide.shape[0]
         self.full_data = None
 
-        miss = self.miss_data.isnull().mean(axis=0).to_numpy()
-        raw_wgts = miss * (1 - miss)
-        self.weights = raw_wgts / raw_wgts.sum()
+        self._get_wgts()
 
         self._expl_vars = data_wide.columns.get_indexer(self._expl_vars).tolist()
 
@@ -301,7 +304,7 @@ def single_mar(
     X3 = np.random.normal(0, 1, n)
     X4 = np.random.normal(0, 1, n)
     X5 = np.random.normal(0, 1, n)
-    Y = X1 + X2 + X3 + X4 + X5 + np.random.normal(0, 1, n)
+    Y = np.random.normal(0, 1, n)
 
     full_data = pd.DataFrame({"Y": Y, "X1": X1, "X2": X2, "X3": X3, "X4": X4, "X5": X5})
 
@@ -345,7 +348,7 @@ def single_mnar(
     X3 = np.random.normal(0, 1, n)
     X4 = np.random.normal(0, 1, n)
     Z = np.random.normal(0, 1, n)
-    Y = X1 + X2 + X3 + X4 + np.random.normal(0, 1, n)
+    Y = np.random.normal(0, 1, n)
 
     full_data = pd.DataFrame({"Y": Y, "X1": X1, "X2": X2, "X3": X3, "X4": X4})
 
@@ -524,7 +527,8 @@ def adult(n=1000, ci=True, mcar_prop=0.5, k=None) -> Dataset:
     adult_compl["income"] = adult_compl["income"].astype("int64")
 
     a_dataset = Dataset()
-    a_dataset.make(adult_compl, y="income")
+    with np.errstate(divide="ignore", invalid="ignore"):
+        a_dataset.make(adult_compl, y="income")
     adult_wide = a_dataset.miss_data.copy()
 
     ed_cols = list(filter(compile("^education_").match, adult_wide.columns.tolist()))
@@ -555,6 +559,8 @@ def adult(n=1000, ci=True, mcar_prop=0.5, k=None) -> Dataset:
     a_dataset.miss_data = adult_miss
     a_dataset.mask = ~adult_miss.isnull().to_numpy()
 
+    a_dataset._get_wgts()
+
     assert a_dataset.full_data.shape == a_dataset.miss_data.shape
     assert (a_dataset.full_data.columns == a_dataset.miss_data.columns).all()
 
@@ -581,7 +587,8 @@ def adult_mnar(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
     adult_compl.drop("sex", axis=1, inplace=True)
 
     a_dataset = Dataset()
-    a_dataset.make(adult_compl, y="income")
+    with np.errstate(divide="ignore", invalid="ignore"):
+        a_dataset.make(adult_compl, y="income")
     adult_wide = a_dataset.miss_data.copy()
 
     ed_cols = list(filter(compile("^education_").match, adult_wide.columns.tolist()))
@@ -615,6 +622,8 @@ def adult_mnar(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
     a_dataset.full_data = adult_wide
     a_dataset.miss_data = adult_miss
     a_dataset.mask = ~adult_miss.isnull().to_numpy()
+
+    a_dataset._get_wgts()
 
     assert a_dataset.full_data.shape == a_dataset.miss_data.shape
     assert (a_dataset.full_data.columns == a_dataset.miss_data.columns).all()

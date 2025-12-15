@@ -144,26 +144,70 @@ class CIMissTest:
 
             diffs.append(m_diffs)
 
-        m = np.mean(np.concatenate(diffs))
+        # m = np.mean(np.concatenate(diffs))
 
-        sigma2_k = np.var([np.mean(d) for d in diffs], ddof=1)
+        # sigma2_k = np.var([np.mean(d) for d in diffs], ddof=1)
+
+        # n = len(sample_idxs)
+        # n_per_fold = n / self.n_folds
+
+        # F_k = self.n_folds
+        # if m != 0:
+        #     t_k = m / np.sqrt((1 / F_k + n_per_fold / (n - n_per_fold)) * sigma2_k)
+        # else:
+        #     t_k = 0.0
+
+        # p_k = stats.t.sf(t_k, F_k - 1)
+
+        # p_2s = 2 * stats.t.sf(np.abs(t_k), F_k - 1)
+
+        # self.results = {
+        #     "m": m,
+        #     "sigma2_k": sigma2_k,
+        #     "t_k": t_k,
+        #     "p_k": p_k,
+        #     "p_2s": p_2s,
+        # }
+
+        f_means = np.array(
+            [np.mean(d) for d in diffs], dtype=float
+        )  # average over imputations within fold
+        f_vars = np.array(
+            [np.var(d, ddof=1) if len(d) > 1 else 0.0 for d in diffs], dtype=float
+        )  # variance over imputations within fold
+
+        F_k = len(diffs)
+        m_imp = self.m
+        assert len(diffs[0]) == m_imp
+
+        m = float(np.mean(f_means))  # grand mean
+
+        B = (
+            float(np.var(f_means, ddof=1)) if F_k > 1 else 0.0
+        )  # between variance (Rubin's)
+        W_bar = float(np.mean(f_vars)) if F_k > 0 else 0.0  # within variance (Rubin's)
+        T = B + (W_bar / m_imp if m_imp > 0 else 0.0)  # total variance
 
         n = len(sample_idxs)
         n_per_fold = n / self.n_folds
 
-        F_k = self.n_folds
-        if m != 0:
-            t_k = m / np.sqrt((1 / F_k + n_per_fold / (n - n_per_fold)) * sigma2_k)
-        else:
-            t_k = 0.0
+        if n <= n_per_fold:
+            raise ValueError("Invalid CV sizes: n must be > n_per_fold")
 
+        cv_correction = (1.0 / F_k) + (
+            n_per_fold / (n - n_per_fold)
+        )  # Nadeau-Bengio correction
+
+        se = np.sqrt(cv_correction * T) if T > 0 else 0.0
+        t_k = m / se if se > 0 else 0.0
         p_k = stats.t.sf(t_k, F_k - 1)
-
         p_2s = 2 * stats.t.sf(np.abs(t_k), F_k - 1)
 
         self.results = {
             "m": m,
-            "sigma2_k": sigma2_k,
+            "B": B,
+            "W_bar": W_bar,
+            "T": T,
             "t_k": t_k,
             "p_k": p_k,
             "p_2s": p_2s,

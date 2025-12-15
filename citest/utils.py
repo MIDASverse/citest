@@ -29,8 +29,8 @@ def BCEclip(
     eps = 1e-15
     p_clipped = np.clip(p, eps, 1 - eps)
 
-    w = 1.0 if sample_weight is None else sample_weight
+    # w = 1.0 if sample_weight is None else sample_weight
 
     with np.errstate(divide="ignore"):
         clipped = -(y * np.log(p_clipped) + (1 - y) * np.log(1 - p_clipped))
-    return clipped * w
+    return clipped  # * w

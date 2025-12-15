@@ -41,19 +41,6 @@ class Imputer:
         # Empty generic method -- used to impute data
         pass
 
-    # def get_complete(self, **kwargs) -> pd.DataFrame:
-    #     """Get imputed data
-
-    #     This method will return the imputed data, if it has already
-    #     been imputed, otherwise it will call the hidden completion
-    #     method first.
-
-    #     """
-    #     # Return imputed data once set
-    #     if self.completed is None:
-    #         self._complete(**kwargs)
-    #     return self.completed
-
 
 class CompleteImputer(Imputer):
     """Impute missing data with complete cases
@@ -120,50 +107,34 @@ class IterativeImputer(Imputer):
     def __init__(self, dataset=None):
         super().__init__(dataset)
 
-    # def _complete(self, train_index=None, **kwargs):
-    #     imputer = skII(**kwargs, sample_posterior=True)
-    #     imputer.set_output(transform="pandas")
-
-    #     if train_index is not None:
-    #         imputer.fit(self.dataset.miss_data.iloc[train_index, :].copy())
-    #     else:
-    #         imputer.fit(self.dataset.miss_data)
-
-    #     # take m=10 draws for completed data
-    #     imps = [imputer.transform(self.dataset.miss_data) for _ in range(10)]
-    #     self.completed = sum(imps) / len(imps)
-
-    #     self.model = imputer
-
     def _complete(self, train_index=None, **kwargs):
-
-        # set up imputers
-        imputer_X = skII(**kwargs, sample_posterior=True)
-        imputer_X.set_output(transform="pandas")
-
-        # set up data
-        data = self.dataset.miss_data.copy()
+        imputer = skII(sample_posterior=True, **kwargs)
+        imputer.set_output(transform="pandas")
+        data = self.dataset.miss_data
+        imputer.fit(data if train_index is None else data.iloc[train_index, :])
 
         if train_index is not None:
-            imputer_X.fit(data.iloc[train_index, 1:].copy())
+            imputer.fit(self.dataset.miss_data.iloc[train_index, :].copy())
         else:
-            imputer_X.fit(data.iloc[:, 1:])
+            imputer.fit(self.dataset.miss_data)
+        self.model = imputer
 
-        self.completed = True
-        self.model = imputer_X
+    # def _complete(self, train_index=None, **kwargs):
 
-    # def get_m_complete(self, m: int = 10, train_index=None, **kwargs) -> pd.DataFrame:
-    #     """Get m completed datasets
+    #     # set up imputers
+    #     imputer_X = skII(**kwargs, sample_posterior=True)
+    #     imputer_X.set_output(transform="pandas")
 
-    #     This method will return m completed datasets, if they have already
-    #     been imputed, otherwise it will call the hidden completion
-    #     method first.
+    #     # set up data
+    #     data = self.dataset.miss_data.copy()
 
-    #     """
-    #     # Return imputed data once set
-    #     if self.model is None:
-    #         self._complete(train_index=train_index, **kwargs)
-    #     return [self.model.transform(self.dataset.miss_data) for _ in range(m)]
+    #     if train_index is not None:
+    #         imputer_X.fit(data.iloc[train_index, 1:].copy())
+    #     else:
+    #         imputer_X.fit(data.iloc[:, 1:])
+
+    #     self.completed = True
+    #     self.model = imputer_X
 
     def get_m_complete(self, m: int = 10, train_index=None, **kwargs) -> pd.DataFrame:
         """Get m completed datasets
@@ -176,30 +147,43 @@ class IterativeImputer(Imputer):
         # Return imputed data once set
         if self.model is None:
             self._complete(train_index=train_index, **kwargs)
+        return [self.model.transform(self.dataset.miss_data) for _ in range(m)]
 
-        imputer_X = self.model
+    # def get_m_complete(self, m: int = 10, train_index=None, **kwargs) -> pd.DataFrame:
+    #     """Get m completed datasets
 
-        data = self.dataset.miss_data.copy()
-        for _ in range(m):
-            data_X_imp = imputer_X.transform(data.iloc[:, 1:])
-            imputer_y = skII(**kwargs, sample_posterior=True)
-            imputer_y.set_output(transform="pandas")
+    #     This method will return m completed datasets, if they have already
+    #     been imputed, otherwise it will call the hidden completion
+    #     method first.
 
-            if train_index is not None:
-                imputer_y.fit(
-                    pd.concat(
-                        [data.iloc[train_index, 0], data_X_imp.iloc[train_index, :]],
-                        axis=1,
-                    )
-                )
-            else:
-                imputer_y.fit(pd.concat([data.iloc[:, 0], data_X_imp], axis=1))
+    #     """
+    #     # Return imputed data once set
+    #     if self.model is None:
+    #         self._complete(train_index=train_index, **kwargs)
 
-            imputed = imputer_y.transform(
-                pd.concat([data.iloc[:, 0], data_X_imp], axis=1)
-            )
+    #     imputer_X = self.model
 
-            yield imputed
+    #     data = self.dataset.miss_data.copy()
+    #     for _ in range(m):
+    #         data_X_imp = imputer_X.transform(data.iloc[:, 1:])
+    #         imputer_y = skII(**kwargs, sample_posterior=True)
+    #         imputer_y.set_output(transform="pandas")
+
+    #         if train_index is not None:
+    #             imputer_y.fit(
+    #                 pd.concat(
+    #                     [data.iloc[train_index, 0], data_X_imp.iloc[train_index, :]],
+    #                     axis=1,
+    #                 )
+    #             )
+    #         else:
+    #             imputer_y.fit(pd.concat([data.iloc[:, 0], data_X_imp], axis=1))
+
+    #         imputed = imputer_y.transform(
+    #             pd.concat([data.iloc[:, 0], data_X_imp], axis=1)
+    #         )
+
+    #         yield imputed
 
 
 class MidasImputer(Imputer):
@@ -228,7 +212,7 @@ class MidasImputer(Imputer):
         if "omit_first" in kwargs:
             omit_first = kwargs.pop("omit_first")
         else:
-            omit_first = True
+            omit_first = False  # TSR: CHANGING TO TEST
 
         midas_model = md.MIDAS(**kwargs)
 
