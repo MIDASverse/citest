@@ -89,6 +89,12 @@ class CIMissTest:
         else:
             sample_idxs = np.arange(self.dataset.miss_data.shape[0])
 
+        cols_idx = [0] + self.dataset._expl_vars
+        mask_arr = self.dataset.mask[:, cols_idx].astype(float)
+        w = getattr(self.dataset, "weights", None)
+        if w is None:
+            w = np.ones_like(errX_mean) / len(errX_mean)
+
         diffs = []
         for train_idx, test_idx in cv.split(sample_idxs):
 
@@ -99,17 +105,18 @@ class CIMissTest:
             imp_datasets = imputer.get_m_complete(
                 m=self.m, train_index=train_idx, **self.imputer_args
             )
+
             m_diffs = []
-            cols_idx = [0] + self.dataset._expl_vars
             for imp_data in imp_datasets:
                 # Check imputed data has same dimensions
                 assert imp_data.shape == self.dataset.miss_data.shape
+                imp_arr = imp_data.to_numpy()
 
-                train = imp_data.iloc[train_idx, cols_idx]
-                test = imp_data.iloc[test_idx, cols_idx]
+                train = imp_arr[train_idx, cols_idx]
+                test = imp_arr[test_idx, cols_idx]
 
-                train_R = 1 * self.dataset.mask[np.ix_(train_idx, cols_idx)]
-                test_R = 1 * self.dataset.mask[np.ix_(test_idx, cols_idx)]
+                train_R = mask_arr[train_idx]
+                test_R = mask_arr[test_idx]
 
                 class_seed = self.rng.integers(2**32 - 1)
                 clf_kwargs = dict(self.classifier_args)
@@ -117,10 +124,10 @@ class CIMissTest:
                 modX = self.classifier(random_state=class_seed, **clf_kwargs)
                 modXY = self.classifier(random_state=class_seed, **clf_kwargs)
 
-                modX.fit(X=train.iloc[:, 1:], y=train_R)
+                modX.fit(X=train[:, 1:], y=train_R)
                 modXY.fit(X=train, y=train_R)
 
-                predsX = modX.predict(test.iloc[:, 1:])
+                predsX = modX.predict(test[:, 1:])
                 predsXY = modXY.predict(test)
 
                 assert predsX.shape == test_R.shape
@@ -137,9 +144,6 @@ class CIMissTest:
                 # m_diffs.append(xij)
 
                 # NEW WEIGHTED CODE
-                w = getattr(self.dataset, "weights", None)
-                if w is None:
-                    w = np.ones_like(errX_mean) / len(errX_mean)
                 m_diffs.append(np.sum(w * (errX_mean - errXY_mean)))
 
             diffs.append(m_diffs)

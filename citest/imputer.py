@@ -110,13 +110,8 @@ class IterativeImputer(Imputer):
     def _complete(self, train_index=None, **kwargs):
         imputer = skII(sample_posterior=True, **kwargs)
         imputer.set_output(transform="pandas")
-        data = self.dataset.miss_data
+        data = self.dataset.miss_data.copy()
         imputer.fit(data if train_index is None else data.iloc[train_index, :])
-
-        if train_index is not None:
-            imputer.fit(self.dataset.miss_data.iloc[train_index, :].copy())
-        else:
-            imputer.fit(self.dataset.miss_data)
         self.model = imputer
 
     # def _complete(self, train_index=None, **kwargs):
