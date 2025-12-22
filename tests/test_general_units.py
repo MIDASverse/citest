@@ -107,12 +107,13 @@ class ImputerTests(unittest.TestCase):
         )
 
     def test_iterative_imputer_sets_model(self):
-        # The iterative imputer should fit a model and flag completion
+        # The iterative imputer should fit a model and produce completed draws
         ds = make_tiny_dataset()
         imp = IterativeImputer(dataset=ds)
-        imp._complete(max_iter=1)
+        imps = imp.get_m_complete(m=2, max_iter=1)
         self.assertIsNotNone(imp.model)
-        self.assertTrue(imp.completed)
+        self.assertEqual(len(imps), 2)
+        self.assertTrue(all(frame.shape == ds.miss_data.shape for frame in imps))
 
 
 class ClassifierTests(unittest.TestCase):
@@ -141,7 +142,7 @@ class CIMissTestTests(unittest.TestCase):
         )
         ci_test.run()
         self.assertIsInstance(ci_test.results, dict)
-        for key in ["m", "sigma2_k", "t_k", "p_k", "p_2s"]:
+        for key in ["m", "B", "W_bar", "T", "t_k", "p_k", "p_2s"]:
             self.assertIn(key, ci_test.results)
 
     def test_summary_runs_after_test(self):

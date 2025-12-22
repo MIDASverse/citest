@@ -87,7 +87,7 @@ class RegressionTests(unittest.TestCase):
         )
         test.run()
         self.assertIsInstance(test.results, dict)
-        for key in ["m", "sigma2_k", "t_k", "p_k", "p_2s"]:
+        for key in ["m", "B", "W_bar", "T", "t_k", "p_k", "p_2s"]:
             self.assertIn(key, test.results)
 
 

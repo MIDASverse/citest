@@ -4,15 +4,14 @@ import numpy as np
 
 
 class CIClassifier:
-    """Light wrapper around scikitlearn-style classifier API
+    """Base class following scikitlearn-style classifier syntax
 
     Plausibly any classifier can be used with this API, so long as
     two methods are defined:
 
-        1. _fit(X,y, **kwargs) -- this must fit the data taking in an array-liek
-        object X and a 1d array-like object y
-        2. _predict(X) -- this must return a 1d array-like object of predicted
-        *probabilities* of being observed
+        1. _fit(X,y, **kwargs) -- this must fit the data taking in an array-like
+        object X and an array-like object y of the same dimensions (a missingness indicator)
+        2. _predict(X) -- this must return an array of shape X.shape
 
     The two public methods fit and predict should not be altered in any subclass.
 

@@ -285,13 +285,15 @@ def identify(
 
 def single_mar(
     n: int,
-    ci: str,
+    ci: bool,
+    missing_mech: str = "linear",
 ) -> Dataset:
     """Generates a simple linear dataset with controllable MAR missingness.
 
     Args:
         n: Number of observations
         ci: Whether the data is conditionally independent (True) or not (False)
+        missing_mech: Whether the missing mechanism is "linear"" in {X,Y} or uses non-linear + XOR transformations
 
     Returns:
         A Dataset object with the full data, missing data, and
@@ -308,10 +310,23 @@ def single_mar(
 
     full_data = pd.DataFrame({"Y": Y, "X1": X1, "X2": X2, "X3": X3, "X4": X4, "X5": X5})
 
-    if ci:
-        R_latent = X1
+    if missing_mech.lower() == "linear":
+        R_latent = X1 if ci else Y
+    elif missing_mech.lower() == "xor":
+        X_xor = (X1 > 0).astype(int) ^ (X3 > 0).astype(int)
+        X_xor = 2.0 * X_xor - 1.0
+        eps = 0.1 * np.random.normal(size=n)  # break ties, make latent continuous
+
+        if ci:
+            # CI: depends only on X (still MAR since X observed)
+            R_latent = X_xor + 0.5 * np.sin(X4) + eps
+        else:
+            # NCI: add Y-dependent interaction (still MAR since Y observed)
+            Y_xor = (Y > np.median(Y)).astype(int) ^ (X5 > 0).astype(int)
+            Y_xor = 2.0 * Y_xor - 1.0
+            R_latent = X_xor + 0.5 * np.sin(X4) + 1.0 * Y_xor + eps
     else:
-        R_latent = Y
+        raise ValueError("missing_mech must be one of 'linear' or 'XOR'")
 
     R = 1 * R_latent < np.quantile(R_latent, 0.5)
 
@@ -329,13 +344,15 @@ def single_mar(
 
 def single_mnar(
     n: int,
-    ci: str,
+    ci: bool,
+    missing_mech: str = "linear",
 ) -> Dataset:
     """Generates a simple linear dataset with controllable MNAR missingness.
 
     Args:
         n: Number of observations
         ci: Whether the data is conditionally independent (True) or not (False)
+        missing_mech: Whether the missing mechanism is "linear"" in {X,Y} or uses non-linear + XOR transformations
 
     Returns:
         A Dataset object with the full data, missing data, and
@@ -352,10 +369,21 @@ def single_mnar(
 
     full_data = pd.DataFrame({"Y": Y, "X1": X1, "X2": X2, "X3": X3, "X4": X4})
 
-    if ci:
-        R_latent = Z
+    if missing_mech.lower() == "linear":
+        R_latent = Z if ci else Y + Z
+
+    elif missing_mech.lower() == "xor":
+        eps = 0.1 * np.random.normal(size=n)
+
+        if ci:
+            R_latent = np.sin(2 * Z) + eps
+        else:
+            # NCI: add Y-dependent XOR interaction (still includes Z)
+            Y_xor = (Y > np.median(Y)).astype(int) ^ (X1 > 0).astype(int)
+            Y_xor = 2.0 * Y_xor - 1.0
+            R_latent = np.sin(2 * Z) + 1.5 * Y_xor + eps
     else:
-        R_latent = Y + Z
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
 
     R = 1 * R_latent < np.quantile(R_latent, 0.5)
 
@@ -689,355 +717,3 @@ def mushrooms(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
     assert (m_dataset.full_data.columns == m_dataset.miss_data.columns).all()
 
     return m_dataset
-
-
-#############
-
-
-# def MAR1(
-#     n: int,
-#     ci: bool = True,
-# ) -> Dataset:
-#     """Generates the MAR-1 missing data pattern from King (2001).
-
-#     Args:
-#         n: Number of observations
-
-#     Returns:
-#         A Dataset object
-
-#     Raises:
-#         ValueError: An error generating or applying missing values to the chosen column
-#     """
-#     data = np.random.multivariate_normal(
-#         mean=[0, 0, 0, 0, 0],
-#         cov=[
-#             [1.0, -0.12, -0.1, 0.5, 0.1],
-#             [-0.12, 1.0, 0.1, -0.6, 0.1],
-#             [-0.1, 0.1, 1.0, -0.5, 0.1],
-#             [0.5, -0.6, -0.5, 1.0, 0.1],
-#             [0.1, 0.1, 0.1, 0.1, 1],
-#         ],
-#         size=n,
-#     )
-
-#     M = np.ndarray(data.shape, dtype=bool)
-#     U1 = np.random.uniform(0, 1, n)
-
-#     # Y and X4 are MCAR:
-#     M[:, 0] = U1 < 0.85
-#     M[:, 4] = U1 < 0.85
-
-#     # X3 is always observed:
-#     M[:, 3] = True
-
-#     # X1 is MAR:
-#     U2 = np.random.uniform(0, 1, n)
-#     M[:, 1] = ~np.all([data[:, 3] < -1, U2 < 0.9], axis=0)
-
-#     # X2 is MAR but variable:
-#     U3 = np.random.uniform(0, 1, n)
-#     if ci:
-#         M[:, 2] = ~np.all(
-#             [data[:, 1] < -1, U3 < 0.9], axis=0
-#         )  # missing by X3 (original) but X1 means we can make it more complex as X1 also has missing values
-#     else:
-#         M[:, 2] = ~np.all([data[:, 0] < -1, U3 < 0.9], axis=0)  # missing by Y
-
-#     corrupt_data = data.copy()
-#     corrupt_data[~M] = np.nan
-
-#     MAR1_dataset = Dataset()
-#     MAR1_dataset.make(
-#         pd.DataFrame(corrupt_data, columns=["Y", "X1", "X2", "X3", "X4"]), y="Y"
-#     )
-
-#     MAR1_dataset.full_data = pd.DataFrame(data, columns=["Y", "X1", "X2", "X3", "X4"])
-
-#     return MAR1_dataset
-
-
-# def MAR1a(
-#     n: int,
-#     ci: bool = True,
-# ) -> Dataset:
-#     """Generates the MAR-1 missing data pattern from King (2001).
-
-#     Args:
-#         n: Number of observations
-
-#     Returns:
-#         A Dataset object
-
-#     Raises:
-#         ValueError: An error generating or applying missing values to the chosen column
-#     """
-#     data = np.random.multivariate_normal(
-#         mean=[0, 0, 0, 0, 0],
-#         cov=[
-#             [1.0, -0.12, -0.1, 0.5, 0.1],
-#             [-0.12, 1.0, 0.1, -0.6, 0.1],
-#             [-0.1, 0.1, 1.0, -0.5, 0.1],
-#             [0.5, -0.6, -0.5, 1.0, 0.1],
-#             [0.1, 0.1, 0.1, 0.1, 1],
-#         ],
-#         size=n,
-#     )
-
-#     M = np.ndarray(data.shape, dtype=bool)
-#     U1 = np.random.uniform(0, 1, n)
-
-#     # Y and X4 are MCAR:
-#     M[:, 0] = U1 < 0.85
-#     M[:, 4] = U1 < 0.85
-
-#     # X3 is always observed:
-#     M[:, 3] = True
-
-#     # X1 is MAR:
-#     U2 = np.random.uniform(0, 1, n)
-#     M[:, 1] = ~np.all([data[:, 3] < -1, U2 < 0.9], axis=0)
-
-#     # X2 is MAR but variable:
-#     U3 = np.random.uniform(0, 1, n)
-#     R_latent = data[:, 1] if ci else data[:, 0]
-#     M[:, 2] = ~np.all([R_latent < np.quantile(R_latent, 0.2), U3 < 0.9], axis=0)
-
-#     corrupt_data = data.copy()
-#     corrupt_data[~M] = np.nan
-
-#     MAR1_dataset = Dataset()
-#     MAR1_dataset.make(
-#         pd.DataFrame(corrupt_data, columns=["Y", "X1", "X2", "X3", "X4"]), y="Y"
-#     )
-
-#     MAR1_dataset.full_data = pd.DataFrame(data, columns=["Y", "X1", "X2", "X3", "X4"])
-
-#     return MAR1_dataset
-
-# def MAR1c(
-#     n: int,
-#     ci: bool = True,
-# ) -> Dataset:
-#     """Generates the MAR-1 missing data pattern from King (2001).
-
-#     Args:
-#         n: Number of observations
-
-#     Returns:
-#         A Dataset object
-
-#     Raises:
-#         ValueError: An error generating or applying missing values to the chosen column
-#     """
-#     data = np.random.multivariate_normal(
-#         mean=[0, 0, 0, 0, 0],
-#         cov=[
-#             [1.0, -0.12, -0.1, 0.5, 0.1],
-#             [-0.12, 1.0, 0.1, -0.6, 0.1],
-#             [-0.1, 0.1, 1.0, -0.5, 0.1],
-#             [0.5, -0.6, -0.5, 1.0, 0.1],
-#             [0.1, 0.1, 0.1, 0.1, 1],
-#         ],
-#         size=n,
-#     )
-
-#     M = np.ndarray(data.shape, dtype=bool)
-#     U1 = np.random.uniform(0, 1, n)
-
-#     # Y and X4 are MCAR:
-#     M[:, 0] = U1 < 0.85
-#     M[:, 4] = U1 < 0.85
-
-#     # X3 is always observed:
-#     M[:, 3] = True
-
-#     # X1 is MAR:
-#     U2 = np.random.uniform(0, 1, n)
-#     M[:, 1] = ~np.all([data[:, 3] < -1, U2 < 0.9], axis=0)
-
-#     # X2 is MAR but variable:
-#     R_latent = data[:, 1] if ci else data[:, 0]
-#     M[:, 2] = ~np.all([R_latent < np.quantile(R_latent, 0.5)], axis=0)
-
-#     corrupt_data = data.copy()
-#     corrupt_data[~M] = np.nan
-
-#     MAR1_dataset = Dataset()
-#     MAR1_dataset.make(
-#         pd.DataFrame(corrupt_data, columns=["Y", "X1", "X2", "X3", "X4"]), y="Y"
-#     )
-
-#     MAR1_dataset.full_data = pd.DataFrame(data, columns=["Y", "X1", "X2", "X3", "X4"])
-
-#     return MAR1_dataset
-
-
-# def MNAR1(
-#     n: int,
-#     ci: bool = True,
-# ) -> Dataset:
-#     """Generates the MAR-1 missing data pattern from King (2001).
-
-#     Args:
-#         n: Number of observations
-
-#     Returns:
-#         A Dataset object
-
-#     Raises:
-#         ValueError: An error generating or applying missing values to the chosen column
-#     """
-#     data = np.random.multivariate_normal(
-#         mean=[0, 0, 0, 0, 0],
-#         cov=[
-#             [1.0, -0.12, -0.1, 0.5, 0.1],
-#             [-0.12, 1.0, 0.1, -0.6, 0.1],
-#             [-0.1, 0.1, 1.0, -0.5, 0.1],
-#             [0.5, -0.6, -0.5, 1.0, 0.1],
-#             [0.1, 0.1, 0.1, 0.1, 1],
-#         ],
-#         size=n,
-#     )
-
-#     M = np.ndarray(data.shape, dtype=bool)
-#     U1 = np.random.uniform(0, 1, n)
-
-#     # Y and X4 are MCAR:
-#     M[:, 0] = U1 < 0.85
-#     M[:, 4] = U1 < 0.85
-
-#     # X3 is always observed:
-#     M[:, 3] = True
-
-#     # X1 is MAR:
-#     U2 = np.random.uniform(0, 1, n)
-#     M[:, 1] = ~np.all([data[:, 3] < -1, U2 < 0.9], axis=0)
-
-#     # X2 is MNAR but ci or MAR but nci
-#     U3 = np.random.uniform(0, 1, n)
-#     if ci:
-#         M[:, 2] = ~np.all([data[:, 2] < -1, U3 < 0.9], axis=0)
-#     else:
-#         M[:, 2] = ~np.all([data[:, 0] < -1, U3 < 0.9], axis=0)  # missing by Y
-
-#     corrupt_data = data.copy()
-#     corrupt_data[~M] = np.nan
-
-#     MNAR1_dataset = Dataset()
-#     MNAR1_dataset.make(
-#         pd.DataFrame(corrupt_data, columns=["Y", "X1", "X2", "X3", "X4"]), y="Y"
-#     )
-
-#     MNAR1_dataset.full_data = pd.DataFrame(data, columns=["Y", "X1", "X2", "X3", "X4"])
-
-#     return MNAR1_dataset
-
-
-# def MNAR1a(
-#     n: int,
-#     ci: bool = True,
-# ) -> Dataset:
-#     """Generates the MAR-1 missing data pattern from King (2001).
-
-#     Args:
-#         n: Number of observations
-
-#     Returns:
-#         A Dataset object
-
-#     Raises:
-#         ValueError: An error generating or applying missing values to the chosen column
-#     """
-#     data = np.random.multivariate_normal(
-#         mean=[0, 0, 0, 0, 0],
-#         cov=[
-#             [1.0, -0.12, -0.1, 0.5, 0.1],
-#             [-0.12, 1.0, 0.1, -0.6, 0.1],
-#             [-0.1, 0.1, 1.0, -0.5, 0.1],
-#             [0.5, -0.6, -0.5, 1.0, 0.1],
-#             [0.1, 0.1, 0.1, 0.1, 1],
-#         ],
-#         size=n,
-#     )
-
-#     M = np.ndarray(data.shape, dtype=bool)
-#     U1 = np.random.uniform(0, 1, n)
-
-#     # Y is MCAR:
-#     M[:, 0] = U1 < 0.85
-
-#     # X3 is always observed:
-#     M[:, 3] = True
-
-#     # X1 is MAR:
-#     U2 = np.random.uniform(0, 1, n)
-#     M[:, 1] = ~np.all([data[:, 3] < -1, U2 < 0.9], axis=0)
-
-#     # X2 is MNAR but CIMDA/CDMDA:
-#     U3 = np.random.uniform(0, 1, n)
-#     R_latent = data[:, 4] if ci else data[:, 4] + data[:, 0]
-#     M[:, 2] = ~np.all([R_latent < np.quantile(R_latent, 0.2), U3 < 0.9], axis=0)
-
-#     data = data[:, :4]  # remove X4 to make it MNAR
-#     M = M[:, :4]  # remove X4 from mask
-
-#     corrupt_data = data.copy()
-#     corrupt_data[~M] = np.nan
-
-#     MNAR1_dataset = Dataset()
-#     MNAR1_dataset.make(
-#         pd.DataFrame(corrupt_data, columns=["Y", "X1", "X2", "X3"]), y="Y"
-#     )
-
-#     MNAR1_dataset.full_data = pd.DataFrame(data, columns=["Y", "X1", "X2", "X3"])
-
-#     return MNAR1_dataset
-
-
-# def MNAR1c(
-#     n: int,
-#     ci: bool = True,
-# ) -> Dataset:
-
-#     data = np.random.multivariate_normal(
-#         mean=[0, 0, 0, 0, 0],
-#         cov=[
-#             [1.0, -0.12, -0.1, 0.5, 0.1],
-#             [-0.12, 1.0, 0.1, -0.6, 0.1],
-#             [-0.1, 0.1, 1.0, -0.5, 0.1],
-#             [0.5, -0.6, -0.5, 1.0, 0.1],
-#             [0.1, 0.1, 0.1, 0.1, 1],
-#         ],
-#         size=n,
-#     )
-
-#     M = np.ndarray(data.shape, dtype=bool)
-#     U1 = np.random.uniform(0, 1, n)
-
-#     # Y is MCAR:
-#     M[:, 0] = U1 < 0.85
-
-#     # X3 is always observed:
-#     M[:, 3] = True
-
-#     # X1 is MAR:
-#     U2 = np.random.uniform(0, 1, n)
-#     M[:, 1] = ~np.all([data[:, 3] < -1, U2 < 0.9], axis=0)
-
-#     # X2 is MNAR but CIMDA/CDMDA:
-#     Z = np.random.normal(0, 1, n)
-#     R_latent = Z if ci else Z + data[:, 0]
-#     M[:, 2] = ~np.all([R_latent < np.quantile(R_latent, 0.5)], axis=0)
-
-#     corrupt_data = data.copy()
-#     corrupt_data[~M] = np.nan
-
-#     MNAR1_dataset = Dataset()
-#     MNAR1_dataset.make(
-#         pd.DataFrame(corrupt_data, columns=["Y", "X1", "X2", "X3", "X4"]), y="Y"
-#     )
-
-#     MNAR1_dataset.full_data = pd.DataFrame(data, columns=["Y", "X1", "X2", "X3", "X4"])
-
-#     return MNAR1_dataset
