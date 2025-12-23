@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from importlib.resources import files
 from re import compile
@@ -35,8 +35,7 @@ class Dataset(BaseModel):
         []
     )  # private variable that will store correctly formatted one-hot encoded vars too
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __repr__(self):
 
@@ -635,7 +634,7 @@ def adult_mnar(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
 
     else:  # MNAR and CI
         for i in range(adult_miss.shape[0]):
-            if adult_sex[i] == "Male" == 1 and np.random.rand() < 0.273:
+            if adult_sex[i] == "Male" and np.random.rand() < 0.273:
                 adult_miss.loc[i, ed_cols] = pd.NA
 
     for c in np.random.choice(
@@ -715,5 +714,7 @@ def mushrooms(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
 
     assert m_dataset.full_data.shape == m_dataset.miss_data.shape
     assert (m_dataset.full_data.columns == m_dataset.miss_data.columns).all()
+
+    m_dataset._get_wgts()
 
     return m_dataset

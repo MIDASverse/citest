@@ -18,7 +18,7 @@ appl_data = pd.read_csv("path/to/your/data.csv")
 
 # Define the dataset object
 appl_dataset = Dataset()
-pol_dataset.make(
+appl_dataset.make(
     appl_data, 
     y="target_variable", 
     expl_vars=["expl_var1", "expl_var2", ...]

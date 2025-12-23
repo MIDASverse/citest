@@ -92,8 +92,10 @@ class CIMissTest:
         cols_idx = [0] + self.dataset._expl_vars
         mask_arr = self.dataset.mask[:, cols_idx].astype(float)
         w = getattr(self.dataset, "weights", None)
-        if w is None:
-            w = np.ones_like(errX_mean) / len(errX_mean)
+        if w is None or not np.isfinite(w).all():
+            w = np.ones_like(len(cols_idx), dtype=float) / len(cols_idx)
+        else:
+            w = w[cols_idx]
 
         diffs = []
         for train_idx, test_idx in cv.split(sample_idxs):
@@ -112,8 +114,8 @@ class CIMissTest:
                 assert imp_data.shape == self.dataset.miss_data.shape
                 imp_arr = imp_data.to_numpy()
 
-                train = imp_arr[train_idx, cols_idx]
-                test = imp_arr[test_idx, cols_idx]
+                train = imp_arr[train_idx][:, cols_idx]
+                test = imp_arr[test_idx][:, cols_idx]
 
                 train_R = mask_arr[train_idx]
                 test_R = mask_arr[test_idx]
