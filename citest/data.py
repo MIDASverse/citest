@@ -399,6 +399,7 @@ def single_mnar(
 def MAR1(
     n: int,
     ci: bool = True,
+    missing_mech: str = "linear",
 ) -> Dataset:
     """Generates the MAR-1 missing data pattern from King (2001).
 
@@ -439,7 +440,34 @@ def MAR1(
 
     # X2 is MAR but variable:
     U3 = np.random.uniform(0, 1, n)
-    R_latent = data[:, 3] if ci else data[:, 0]
+    mech = missing_mech.lower()
+    if mech == "linear":
+        R_latent = data[:, 3] if ci else data[:, 0]
+    elif mech == "xor":
+        y = data[:, 0]
+        x1 = data[:, 1]
+        x3 = data[:, 3]
+
+        eps = 0.05 * np.random.normal(size=n)
+
+        # baseline nonlinear in X-only (CI case) so still MAR
+        # includes XOR-like gate that plain logistic on raw vars won't model well
+        gate_X = (x1 > 0).astype(int) ^ (x3 > 0).astype(int)
+        gate_X = 2.0 * gate_X - 1.0
+
+        base = gate_X + 0.6 * np.sin(1.5 * x3) + 0.2 * np.cos(1.2 * x1) + eps
+
+        if ci:
+            R_latent = base
+        else:
+            # add Y-dependent interaction: XOR between sign(Y) and sign(X3)
+            gate_Y = (y > 0).astype(int) ^ (x3 > 0).astype(int)
+            gate_Y = 2.0 * gate_Y - 1.0
+            R_latent = base + 1.0 * gate_Y
+
+    else:
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
+
     M[:, 2] = ~np.all([R_latent < np.quantile(R_latent, 0.2), U3 < 0.9], axis=0)
 
     corrupt_data = data.copy()
@@ -458,6 +486,7 @@ def MAR1(
 def MNAR1(
     n: int,
     ci: bool = True,
+    missing_mech: str = "linear",
 ) -> Dataset:
     """Generates the MAR-1 missing data pattern from King (2001).
 
@@ -500,7 +529,27 @@ def MNAR1(
     # X2 is MNAR but CIMDA/CDMDA:
     U3 = np.random.uniform(0, 1, n)
     Z = np.random.normal(0, 1, n)
-    R_latent = Z if ci else Z + 2 * data[:, 0]
+
+    mech = missing_mech.lower()
+    if mech == "linear":
+        R_latent = Z if ci else Z + 2 * data[:, 0]
+    elif mech == "xor":
+        y = data[:, 0]
+        x3 = data[:, 3]
+        eps = 0.05 * np.random.normal(size=n)
+
+        base = np.sin(2.0 * Z) + 0.2 * np.cos(1.5 * Z) + eps  # nonlinear Z-only
+
+        if ci:
+            R_latent = base
+        else:
+            gate_Y = (y > 0).astype(int) ^ (x3 > 0).astype(int)
+            gate_Y = 2.0 * gate_Y - 1.0
+            R_latent = base + 1.2 * gate_Y
+
+    else:
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
+
     M[:, 2] = ~np.all([R_latent < np.quantile(R_latent, 0.2), U3 < 0.9], axis=0)
 
     corrupt_data = data.copy()
