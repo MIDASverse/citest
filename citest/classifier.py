@@ -51,11 +51,14 @@ class ProbClassifier(CIClassifier):
     estimator's n_jobs=1 to avoid oversubscription.
 
     Estimator must support predict_proba; constant targets are short-circuited.
+
+    Note: n_features allows passing feature count if useful, but can be ignored.
     """
 
     def __init__(
         self,
         estimator=None,
+        n_features=None,
         target_n_jobs=1,
         require_proba=True,
         **kwargs,
@@ -69,6 +72,7 @@ class ProbClassifier(CIClassifier):
         self.models_ = None
         self.const_probs_ = None
         self.n_targets_ = None
+        self.n_features = n_features
         self.target_n_jobs = target_n_jobs
         self.base_kwargs = dict(
             **kwargs,
@@ -122,7 +126,17 @@ class ProbClassifier(CIClassifier):
             if model is None:
                 probs[:, idx] = const_p
             else:
-                probs[:, idx] = model.predict_proba(X)[:, 1]
+                model_proba = model.predict_proba(X)
+
+                if hasattr(model, "classes_"):
+                    # pick the column that corresponds to the observed class label (1) if present
+                    class_one_idx = np.where(model.classes_ == 1)[0]
+                    if class_one_idx.size > 0:
+                        probs[:, idx] = model_proba[:, class_one_idx[0]]
+                        continue
+
+                # fall back to assuming observed class is in the second column
+                probs[:, idx] = model_proba[:, 1]
 
         return probs
 
@@ -138,21 +152,42 @@ class RFClassifier(ProbClassifier):
     def __init__(
         self,
         n_estimators=100,
-        max_features=None,
+        max_features="auto",
         min_samples_leaf=5,
         class_weight="balanced",
+        n_features=None,
         target_n_jobs=1,
         n_jobs=None,
         random_state=None,
         **kwargs,
     ):
+        # set inner parallelism
         tree_n_jobs = 1 if target_n_jobs not in (None, 1) and n_jobs is None else n_jobs
+
+        # piecewise max_features based on n_features
+        if max_features == "auto":
+
+            if n_features is None:
+                max_features = (
+                    "sqrt"  # default sklearn behavior when n_features unknown
+                )
+                raise UserWarning(
+                    "n_features is None; setting max_features='sqrt' by default"
+                )
+            elif n_features <= 12:
+                max_features = None
+            elif n_features <= 80:
+                max_features = 12
+            else:
+                max_features = "sqrt"
+
         super().__init__(
             estimator=RandomForestClassifier,
             n_estimators=n_estimators,
             max_features=max_features,
             min_samples_leaf=min_samples_leaf,
             class_weight=class_weight,
+            n_features=n_features,
             target_n_jobs=target_n_jobs,
             n_jobs=tree_n_jobs,
             random_state=random_state,
@@ -174,6 +209,7 @@ class ETClassifier(ProbClassifier):
         max_features=None,
         min_samples_leaf=5,
         class_weight="balanced",
+        n_features=None,
         target_n_jobs=1,
         n_jobs=None,
         random_state=None,
@@ -186,6 +222,7 @@ class ETClassifier(ProbClassifier):
             max_features=max_features,
             min_samples_leaf=min_samples_leaf,
             class_weight=class_weight,
+            n_features=n_features,  # ignored
             target_n_jobs=target_n_jobs,
             n_jobs=tree_n_jobs,
             random_state=random_state,
@@ -208,6 +245,7 @@ class LogisticClassifier(ProbClassifier):
         solver="liblinear",
         max_iter=5000,
         random_state=None,
+        n_features=None,
         target_n_jobs=1,
         **kwargs,
     ):
@@ -218,6 +256,7 @@ class LogisticClassifier(ProbClassifier):
             solver=solver,
             max_iter=max_iter,
             random_state=random_state,
+            n_features=n_features,  # ignored
             target_n_jobs=target_n_jobs,
             **kwargs,
         )

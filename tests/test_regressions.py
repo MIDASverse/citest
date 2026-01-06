@@ -29,7 +29,7 @@ class RegressionTests(unittest.TestCase):
         X = rng.normal(size=(10, 3))
 
         y_single = rng.integers(0, 2, size=10)
-        clf_single = RFClassifier(n_estimators=5, random_state=0)
+        clf_single = RFClassifier(n_estimators=5, n_features=4, random_state=0)
         clf_single.fit(X, y_single)
         preds_single = clf_single.predict(X)
         self.assertEqual(preds_single.shape, (10, 1))
@@ -37,7 +37,7 @@ class RegressionTests(unittest.TestCase):
         y_multi = np.column_stack(
             [rng.integers(0, 2, size=10), rng.integers(0, 2, size=10)]
         )
-        clf_multi = RFClassifier(n_estimators=5, random_state=1)
+        clf_multi = RFClassifier(n_estimators=5, n_features=5, random_state=1)
         clf_multi.fit(X, y_multi)
         preds_multi = clf_multi.predict(X)
         self.assertEqual(preds_multi.shape, y_multi.shape)

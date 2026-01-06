@@ -97,6 +97,8 @@ class CIMissTest:
         else:
             w = w[cols_idx]
 
+        ncol = len(cols_idx)
+
         diffs = []
         for train_idx, test_idx in cv.split(sample_idxs):
 
@@ -128,10 +130,16 @@ class CIMissTest:
                 test_R = mask_arr[test_idx]
 
                 class_seed = self.rng.integers(2**32 - 1)
+
                 clf_kwargs = dict(self.classifier_args)
                 clf_kwargs.pop("random_state", None)  # enforce rng-driven seed only
-                modX = self.classifier(random_state=class_seed, **clf_kwargs)
-                modXY = self.classifier(random_state=class_seed, **clf_kwargs)
+
+                modX = self.classifier(
+                    random_state=class_seed, n_features=ncol, **clf_kwargs
+                )
+                modXY = self.classifier(
+                    random_state=class_seed, n_features=ncol, **clf_kwargs
+                )
 
                 modX.fit(X=np.column_stack((train_u, train[:, 1:])), y=train_R)
                 modXY.fit(X=train, y=train_R)

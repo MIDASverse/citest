@@ -12,7 +12,7 @@ from citest.imputer import (
     NullImputer,
     IterativeImputer,
 )
-from citest.classifier import CIClassifier, RFClassifier
+from citest.classifier import CIClassifier, ProbClassifier, RFClassifier
 from citest.test import CIMissTest
 
 
@@ -47,6 +47,22 @@ class DummyClassifier(CIClassifier):
     def _predict(self, X):
         # Emit a matrix of 0.5 probabilities with the expected shape
         return np.full((X.shape[0], self.target_width), 0.5)
+
+class ReversedProbaEstimator:
+    """Estimator stub that returns class 1 probabilities in column 0 to mimic misordered classes."""
+
+    def __init__(self, **kwargs):
+        pass
+
+    def fit(self, X, y):
+        # store the empirical positive rate and expose a reversed classes_ order
+        self.p1 = float(np.mean(y))
+        self.classes_ = np.array([1, 0])
+
+    def predict_proba(self, X):
+        p1 = np.full(X.shape[0], self.p1)
+        p0 = 1 - p1
+        return np.column_stack([p1, p0])
 
 
 def make_tiny_dataset():
@@ -122,11 +138,24 @@ class ClassifierTests(unittest.TestCase):
         rng = np.random.default_rng(0)
         X = rng.normal(size=(20, 3))
         y = np.column_stack([rng.integers(0, 2, size=20), rng.integers(0, 2, size=20)])
-        clf = RFClassifier(n_estimators=5, random_state=0)
+        clf = RFClassifier(n_estimators=5, n_features=4, random_state=0)
         clf.fit(X, y)
         preds = clf.predict(X)
         self.assertEqual(preds.shape, y.shape)
         self.assertTrue(np.logical_and(preds >= 0, preds <= 1).all())
+
+    def test_prob_classifier_handles_misordered_predict_proba_columns(self):
+        # ProbClassifier should pull the correct column when class labels are not in ascending order
+        rng = np.random.default_rng(1)
+        X = rng.normal(size=(12, 2))
+        y = np.array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+
+        clf = ProbClassifier(estimator=ReversedProbaEstimator, target_n_jobs=1)
+        clf.fit(X, y)
+        preds = clf.predict(X)
+
+        self.assertEqual(preds.shape, (X.shape[0], 1))
+        self.assertTrue(np.allclose(preds, y.mean()))
 
 
 class CIMissTestTests(unittest.TestCase):
