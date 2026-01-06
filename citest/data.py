@@ -8,6 +8,26 @@ from importlib.resources import files
 from re import compile
 
 
+def _pick_gate_col(adult_wide, ed_cols):
+    banned = set(ed_cols) | {"income", "age"}
+    candidates = [c for c in adult_wide.columns if c not in banned]
+    return candidates[0] if len(candidates) > 0 else None
+
+
+def _to_binary_gate(series):
+    """Convert a pandas Series to a boolean gate."""
+    s = series
+
+    # if boolean/0-1-ish dummy, threshold at >0
+    uniq = np.unique(s.dropna().to_numpy())
+    if len(uniq) <= 3 and set(uniq).issubset({0, 1, False, True}):
+        return s.astype(float) > 0.5
+
+    # otherwise threshold at median
+    med = np.nanmedian(s.astype(float))
+    return s.astype(float) > med
+
+
 class Dataset(BaseModel):
     """Object to store data and mask for missing data.
 
@@ -178,7 +198,7 @@ def kuha(
     else:
         raise ValueError("R_by must be either 'Y' or 'X'")
 
-    R = 1 * (R_latent < np.quantile(R_latent, 0.5))
+    R = (R_latent < np.quantile(R_latent, 0.5)).astype(int)
 
     if R_in.upper() == "X":
         X[R == 0] = np.nan
@@ -236,7 +256,7 @@ def v4_dgp(
     else:
         raise ValueError("R_by must be either 'Y' or 'X'")
 
-    R = 1 * R_latent < np.quantile(R_latent, 0.5)
+    R = (R_latent < np.quantile(R_latent, 0.5)).astype(int)
 
     if R_in.upper() == "X":
         X1[R == 0] = np.nan
@@ -257,7 +277,7 @@ def v4_dgp(
 
 def identify(
     n: int,
-    ci: str,
+    ci: bool,
     eta: float = 0.0,
 ) -> Dataset:
 
@@ -327,7 +347,7 @@ def single_mar(
     else:
         raise ValueError("missing_mech must be one of 'linear' or 'XOR'")
 
-    R = 1 * R_latent < np.quantile(R_latent, 0.5)
+    R = (R_latent < np.quantile(R_latent, 0.5)).astype(int)
 
     X2[R == 0] = np.nan
 
@@ -384,7 +404,7 @@ def single_mnar(
     else:
         raise ValueError("missing_mech must be one of 'linear' or 'xor'")
 
-    R = 1 * R_latent < np.quantile(R_latent, 0.5)
+    R = (R_latent < np.quantile(R_latent, 0.5)).astype(int)
 
     X2[R == 0] = np.nan
 
@@ -565,7 +585,9 @@ def MNAR1(
     return MNAR1_dataset
 
 
-def adult(n=1000, ci=True, mcar_prop=0.5, k=None) -> Dataset:
+def adult(
+    n=1000, ci=True, mcar_prop=0.5, k=None, missing_mech: str = "linear"
+) -> Dataset:
 
     path = files("citest.data_examples").joinpath("us-census-income.csv")
     adult = pd.read_csv(path)
@@ -612,15 +634,44 @@ def adult(n=1000, ci=True, mcar_prop=0.5, k=None) -> Dataset:
     # Missing pattern
     adult_miss = adult_wide.copy()
 
-    if not ci:
-        for i in range(adult_miss.shape[0]):
-            if adult_miss["income"].iloc[i] == 1 and np.random.rand() < 0.9:
-                adult_miss.loc[i, ed_cols] = pd.NA
+    mech = missing_mech.lower()
+    rng_u = np.random.rand(adult_miss.shape[0])
+
+    y = adult_miss["income"].astype(int)
+    age = adult_miss["age"].astype(float)
+
+    if mech == "linear":
+        if ci:
+            trigger = age <= 30
+        else:
+            trigger = y == 1
+
+    elif mech == "xor":
+        # Primary gate from age (keep the same "age <= 30" flavour)
+        g1 = age <= 30
+
+        gate_col = _pick_gate_col(adult_miss, ed_cols)
+        if gate_col is None:
+            # fallback: nonlinear 1D gate from age decile parity (hard for plain logistic)
+            # e.g., alternating decades: 0–9,10–19,... -> parity
+            decade = (np.floor(age / 10.0)).astype(int)
+            g2 = decade % 2 == 0
+        else:
+            g2 = _to_binary_gate(adult_miss[gate_col])
+
+        base = g1 ^ g2  # XOR: not linearly separable in (g1,g2)
+
+        if ci:
+            trigger = base
+        else:
+            # add Y in a nonlinear way: parity flip by income
+            trigger = base ^ (y == 1)
 
     else:
-        for i in range(adult_miss.shape[0]):
-            if adult_miss["age"].iloc[i] <= 30 and np.random.rand() < 0.9:
-                adult_miss.loc[i, ed_cols] = pd.NA
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
+
+    miss_rows = trigger & (rng_u < 0.9)
+    adult_miss.loc[miss_rows, ed_cols] = pd.NA
 
     for c in np.random.choice(
         a=adult_miss.shape[1] - 1,
@@ -643,7 +694,7 @@ def adult(n=1000, ci=True, mcar_prop=0.5, k=None) -> Dataset:
     return a_dataset
 
 
-def adult_mnar(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
+def adult_mnar(n=1000, ci=True, mcar_prop=0.5, missing_mech: str = "linear") -> Dataset:
 
     path = files("citest.data_examples").joinpath("us-census-income.csv")
     adult = pd.read_csv(path)
@@ -672,19 +723,43 @@ def adult_mnar(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
     # Missing pattern
     adult_miss = adult_wide.copy()
 
-    if not ci:  # MNAR and NCI
-        for i in range(adult_miss.shape[0]):
-            if (
-                adult_miss["income"].iloc[i] == 1
-                and adult_sex[i] == "Male"
-                and np.random.rand() < 0.9
-            ):
-                adult_miss.loc[i, ed_cols] = pd.NA
+    mech = missing_mech.lower()
+    rng_u = np.random.rand(adult_miss.shape[0])
 
-    else:  # MNAR and CI
-        for i in range(adult_miss.shape[0]):
-            if adult_sex[i] == "Male" and np.random.rand() < 0.273:
-                adult_miss.loc[i, ed_cols] = pd.NA
+    y = adult_miss["income"].astype(int)
+    age = adult_miss["age"].astype(float) if "age" in adult_miss.columns else None
+    male = adult_sex.to_numpy() == "Male"
+
+    if mech == "linear":
+        if not ci:
+            miss_rows = (y.to_numpy() == 1) & male & (rng_u < 0.9)
+        else:
+            miss_rows = male & (rng_u < 0.273)
+
+    elif mech == "xor":
+        # Build an observed gate g2 from non-education features (sex is latent)
+        gate_col = _pick_gate_col(adult_miss, ed_cols)
+        if gate_col is None and age is not None:
+            decade = (np.floor(age / 10.0)).astype(int)
+            g2 = (decade % 2 == 0).to_numpy()
+        elif gate_col is not None:
+            g2 = _to_binary_gate(adult_miss[gate_col]).to_numpy()
+        else:
+            g2 = np.random.rand(adult_miss.shape[0]) < 0.5
+
+        base = male ^ g2  # XOR between latent sex and observed covariate gate
+
+        if ci:
+            # CI: depends on latent sex + observed gate, not on income
+            miss_rows = base & (rng_u < 0.9)
+        else:
+            # NCI: flip parity by income => introduces Y effect in a nonlinear way
+            miss_rows = (base ^ (y.to_numpy() == 1)) & (rng_u < 0.9)
+
+    else:
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
+
+    adult_miss.loc[miss_rows, ed_cols] = pd.NA
 
     for c in np.random.choice(
         a=adult_miss.shape[1] - 1,

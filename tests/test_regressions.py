@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from citest.classifier import RandomForest
+from citest.classifier import RFClassifier
 from citest.data import Dataset
 from citest.imputer import NullImputer, IterativeImputer
 from citest.test import CIMissTest
@@ -29,7 +29,7 @@ class RegressionTests(unittest.TestCase):
         X = rng.normal(size=(10, 3))
 
         y_single = rng.integers(0, 2, size=10)
-        clf_single = RandomForest(n_estimators=5, random_state=0)
+        clf_single = RFClassifier(n_estimators=5, random_state=0)
         clf_single.fit(X, y_single)
         preds_single = clf_single.predict(X)
         self.assertEqual(preds_single.shape, (10, 1))
@@ -37,7 +37,7 @@ class RegressionTests(unittest.TestCase):
         y_multi = np.column_stack(
             [rng.integers(0, 2, size=10), rng.integers(0, 2, size=10)]
         )
-        clf_multi = RandomForest(n_estimators=5, random_state=1)
+        clf_multi = RFClassifier(n_estimators=5, random_state=1)
         clf_multi.fit(X, y_multi)
         preds_multi = clf_multi.predict(X)
         self.assertEqual(preds_multi.shape, y_multi.shape)
@@ -67,12 +67,12 @@ class RegressionTests(unittest.TestCase):
         ds = make_small_dataset()
         with self.assertRaises(ValueError):
             CIMissTest(
-                dataset=ds, imputer=NullImputer, classifier=RandomForest, n_folds=10
+                dataset=ds, imputer=NullImputer, classifier=RFClassifier, n_folds=10
             ).run()
 
         # n_folds equal to n should be permitted
         CIMissTest(
-            dataset=ds, imputer=NullImputer, classifier=RandomForest, n_folds=4, m=1
+            dataset=ds, imputer=NullImputer, classifier=RFClassifier, n_folds=4, m=1
         ).run()
 
     def test_cimiss_minimal_integration(self):
@@ -80,7 +80,7 @@ class RegressionTests(unittest.TestCase):
         test = CIMissTest(
             dataset=ds,
             imputer=NullImputer,
-            classifier=RandomForest,
+            classifier=RFClassifier,
             m=1,
             n_folds=2,
             classifier_args={"n_estimators": 5, "random_state": 0},

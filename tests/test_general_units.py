@@ -12,7 +12,7 @@ from citest.imputer import (
     NullImputer,
     IterativeImputer,
 )
-from citest.classifier import CIClassifier, RandomForest
+from citest.classifier import CIClassifier, RFClassifier
 from citest.test import CIMissTest
 
 
@@ -122,7 +122,7 @@ class ClassifierTests(unittest.TestCase):
         rng = np.random.default_rng(0)
         X = rng.normal(size=(20, 3))
         y = np.column_stack([rng.integers(0, 2, size=20), rng.integers(0, 2, size=20)])
-        clf = RandomForest(n_estimators=5, random_state=0)
+        clf = RFClassifier(n_estimators=5, random_state=0)
         clf.fit(X, y)
         preds = clf.predict(X)
         self.assertEqual(preds.shape, y.shape)

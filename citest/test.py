@@ -32,7 +32,7 @@ class CIMissTest:
         self,
         dataset: Dataset,
         imputer: Imputer = MidasImputer,
-        classifier: CIClassifier = RandomForest,
+        classifier: CIClassifier = RFClassifier,
         m: int = 10,
         n_folds: int = 10,
         classifier_args: dict = {},
@@ -93,7 +93,7 @@ class CIMissTest:
         mask_arr = self.dataset.mask[:, cols_idx].astype(float)
         w = getattr(self.dataset, "weights", None)
         if w is None or not np.isfinite(w).all():
-            w = np.ones_like(len(cols_idx), dtype=float) / len(cols_idx)
+            w = np.full(len(cols_idx), 1.0 / len(cols_idx))
         else:
             w = w[cols_idx]
 
@@ -117,6 +117,13 @@ class CIMissTest:
                 train = imp_arr[train_idx][:, cols_idx]
                 test = imp_arr[test_idx][:, cols_idx]
 
+                train_y = train[:, 0]
+                test_y = test[:, 0]
+
+                # permute outcome so CI holds but maintains symmetry
+                train_u = self.rng.permutation(train_y)
+                test_u = self.rng.permutation(test_y)
+
                 train_R = mask_arr[train_idx]
                 test_R = mask_arr[test_idx]
 
@@ -126,10 +133,10 @@ class CIMissTest:
                 modX = self.classifier(random_state=class_seed, **clf_kwargs)
                 modXY = self.classifier(random_state=class_seed, **clf_kwargs)
 
-                modX.fit(X=train[:, 1:], y=train_R)
+                modX.fit(X=np.column_stack((train_u, train[:, 1:])), y=train_R)
                 modXY.fit(X=train, y=train_R)
 
-                predsX = modX.predict(test[:, 1:])
+                predsX = modX.predict(np.column_stack((test_u, test[:, 1:])))
                 predsXY = modXY.predict(test)
 
                 assert predsX.shape == test_R.shape

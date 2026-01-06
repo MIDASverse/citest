@@ -81,10 +81,12 @@ class TestPipelineShapes(unittest.TestCase):
 
         test.run()
 
-        # verify we saw both with and without outcome feature sets
-        feature_counts = {rec[0][1] for rec in ShapeCheckingClassifier.fit_records}
-        self.assertIn(len(self.dataset._expl_vars), feature_counts)
-        self.assertIn(len(self.dataset._expl_vars) + 1, feature_counts)
+        # X-only branch now includes a permuted outcome column, so both models should
+        # see the same feature width (outcome + expl vars) on every fit
+        expected_width = len(self.dataset._expl_vars) + 1
+        feature_counts = [rec[0][1] for rec in ShapeCheckingClassifier.fit_records]
+        self.assertEqual(set(feature_counts), {expected_width})
+        self.assertEqual(len(feature_counts), test.n_folds * test.m * 2)
 
         self.assertTrue(
             all(

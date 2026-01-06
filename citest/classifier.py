@@ -1,6 +1,11 @@
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
 from sklearn.linear_model import LogisticRegression
+from joblib import Parallel, delayed
 import numpy as np
+
+
+class NotFittedError(Exception):
+    pass
 
 
 class CIClassifier:
@@ -13,12 +18,12 @@ class CIClassifier:
         object X and an array-like object y of the same dimensions (a missingness indicator)
         2. _predict(X) -- this must return an array of shape X.shape
 
-    The two public methods fit and predict should not be altered in any subclass.
+    The two public methods fit() and predict() should not be altered in any subclass.
 
     """
 
     def __init__(self):
-        model = None
+        pass
 
     def _fit(self, X, y) -> None:
         """Hidden method to fit specific classifier model"""
@@ -38,89 +43,42 @@ class CIClassifier:
         return self._predict(X)
 
 
-class LogisticClassifier(CIClassifier):
+class ProbClassifier(CIClassifier):
     """
-    Logistic regression classifier
-    """
+    More specific template classifier performing probabilistic classification per-target column
 
-    def __init__(self, **kwargs):
-        super().__init__()
-        self.logit_kwargs = kwargs
-        self.estimators_ = None
-        self.const_probs_ = None
+    Per-target probabilistic classifier. Set target_n_jobs > 1 to parallelize fits/preds across target columns; when doing so, keep the wrapped
+    estimator's n_jobs=1 to avoid oversubscription.
 
-    def _fit(self, X, y):
-
-        y_arr = np.asarray(y)
-        if y_arr.ndim == 1:
-            y_arr = y_arr[:, None]
-
-        n_targets = y_arr.shape[1]
-        self.estimators_ = []
-        self.const_probs_ = []
-
-        for j in range(n_targets):
-            y_j = y_arr[:, j]
-            classes = np.unique(y_j)
-
-            if classes.size < 2:  # prevent fit failure
-                self.estimators_.append(None)
-                self.const_probs_.append(float(classes[0]))
-            else:
-                # Fit a standard logistic regression for this column
-                est = LogisticRegression(
-                    penalty=None,
-                    solver="lbfgs",
-                    max_iter=1000,
-                    **self.logit_kwargs,
-                )
-                est.fit(X, y_j)
-                self.estimators_.append(est)
-                self.const_probs_.append(None)
-
-    def _predict(self, X):
-        probs = []
-        for est, const_p in zip(self.estimators_, self.const_probs_):
-            if est is None:
-                # Column was constant in training; use stored constant prob
-                probs.append(np.full(X.shape[0], const_p))
-            else:
-                p = est.predict_proba(X)
-                # binary logit: p has shape (n_samples, 2), [:, 1] is P(R=1)
-                probs.append(p[:, 1])
-
-        return np.column_stack(probs)
-
-
-class RFClassifier(CIClassifier):
-    """
-    Random Forest classifier
+    Estimator must support predict_proba; constant targets are short-circuited.
     """
 
     def __init__(
         self,
-        n_estimators=200,
-        max_features=None,
-        min_samples_leaf=5,
-        class_weight="balanced",
-        n_jobs=None,
-        random_state=None,
+        estimator=None,
+        target_n_jobs=1,
+        require_proba=True,
         **kwargs,
     ):
         super().__init__()
-
+        if not callable(estimator):
+            raise TypeError("Estimator must be a callable")
+        else:
+            self.estimator = estimator
+        self.require_proba = require_proba
+        self.models_ = None
+        self.const_probs_ = None
+        self.n_targets_ = None
+        self.target_n_jobs = target_n_jobs
         self.base_kwargs = dict(
-            n_estimators=n_estimators,
-            max_features=max_features,
-            min_samples_leaf=min_samples_leaf,
-            class_weight=class_weight,
-            n_jobs=n_jobs,
-            random_state=random_state,
             **kwargs,
         )
 
-        self.models_ = None  # list[RandomForestClassifier or None]
-        self.const_probs_ = None  # list[float or None]
+    def _new_estimator(self):
+        est = self.estimator(**self.base_kwargs)
+        if self.require_proba and not hasattr(est, "predict_proba"):
+            raise ValueError("Estimator must implement predict_proba")
+        return est
 
     def _fit(self, X, y):
         """
@@ -131,71 +89,228 @@ class RFClassifier(CIClassifier):
         if y_arr.ndim == 1:
             y_arr = y_arr[:, None]
 
-        n_targets = y_arr.shape[1]
+        self.n_targets_ = y_arr.shape[1]
         self.models_ = []
         self.const_probs_ = []
 
-        for j in range(n_targets):
-            y_j = y_arr[:, j]
-            classes = np.unique(y_j)
+        def fit_one(y_col):
+            if y_col.min() == y_col.max():  # faster constant check
+                return None, float(y_col[0])
+            est = self._new_estimator()
+            est.fit(X, y_col)
+            return est, None
 
-            if classes.size < 2:
-                self.models_.append(None)
-                self.const_probs_.append(float(classes[0]))
-            else:
-                rf = RandomForestClassifier(**self.base_kwargs)
-                rf.fit(X, y_j)
-                self.models_.append(rf)
-                self.const_probs_.append(None)
+        results = Parallel(n_jobs=self.target_n_jobs, prefer="threads")(
+            delayed(fit_one)(y_col) for y_col in y_arr.T
+        )
+        self.models_, self.const_probs_ = map(list, zip(*results))
 
     def _predict(self, X):
         """
         Returns an (n_samples, n_outputs) array of predicted probabilities
         P(R_j = 1 | X) for each column j, matching the shape of the mask.
         """
-        probs = []
 
-        for model, const_p in zip(self.models_, self.const_probs_):
+        if self.models_ is None or self.const_probs_ is None:
+            raise NotFittedError(
+                "No model fits detected--please ensure fit() has been called"
+            )
+
+        probs = np.empty((X.shape[0], self.n_targets_))
+
+        for idx, (model, const_p) in enumerate(zip(self.models_, self.const_probs_)):
             if model is None:
-                probs.append(np.full(X.shape[0], const_p))
+                probs[:, idx] = const_p
             else:
-                p = model.predict_proba(X)
-                probs.append(p[:, 1])
+                probs[:, idx] = model.predict_proba(X)[:, 1]
 
-        return np.column_stack(probs)
+        return probs
 
 
-class RandomForest(CIClassifier):
+class RFClassifier(ProbClassifier):
     """
     Random Forest classifier
+
+    RandomForest wrapper using outer target_n_jobs for parallel targets and inner n_jobs for per-tree parallelism. Use
+    either outer parallelism (target_n_jobs > 1, n_jobs=1) or inner parallelism (target_n_jobs=1, n_jobs as desired), but avoid setting both >1.
     """
 
-    def __init__(self, **kwargs):
-        super().__init__()
-
-        # add lower than sklearn default for n_estimators
-        if "n_estimators" in kwargs:
-            n_estimators = kwargs.pop("n_estimators")
-        else:
-            n_estimators = 20
-
-        self.model = RandomForestClassifier(
-            **kwargs, n_estimators=n_estimators, max_features=None
+    def __init__(
+        self,
+        n_estimators=100,
+        max_features=None,
+        min_samples_leaf=5,
+        class_weight="balanced",
+        target_n_jobs=1,
+        n_jobs=None,
+        random_state=None,
+        **kwargs,
+    ):
+        tree_n_jobs = 1 if target_n_jobs not in (None, 1) and n_jobs is None else n_jobs
+        super().__init__(
+            estimator=RandomForestClassifier,
+            n_estimators=n_estimators,
+            max_features=max_features,
+            min_samples_leaf=min_samples_leaf,
+            class_weight=class_weight,
+            target_n_jobs=target_n_jobs,
+            n_jobs=tree_n_jobs,
+            random_state=random_state,
+            **kwargs,
         )
 
-    def _fit(self, X, y):
 
-        self.model.fit(X, y)
+class ETClassifier(ProbClassifier):
+    """
+    Extremely randomized trees classifier
 
-    def _predict(self, X):
-        probas = self.model.predict_proba(X)
-        prob_list = probas if isinstance(probas, list) else [probas]
+    ExtraTrees wrapper using outer target_n_jobs for parallel targets and inner n_jobs for per-tree parallelism. Use
+    either outer parallelism (target_n_jobs > 1, n_jobs=1) or inner parallelism (target_n_jobs=1, n_jobs as desired), but avoid setting both >1.
+    """
 
-        cols = [
-            (
-                p[:, 1] if p.ndim > 1 and p.shape[1] > 1 else p[:, 0]
-            )  # probability of R = 1
-            for p in prob_list
-        ]
+    def __init__(
+        self,
+        n_estimators=100,
+        max_features=None,
+        min_samples_leaf=5,
+        class_weight="balanced",
+        target_n_jobs=1,
+        n_jobs=None,
+        random_state=None,
+        **kwargs,
+    ):
+        tree_n_jobs = 1 if target_n_jobs not in (None, 1) and n_jobs is None else n_jobs
+        super().__init__(
+            estimator=ExtraTreesClassifier,
+            n_estimators=n_estimators,
+            max_features=max_features,
+            min_samples_leaf=min_samples_leaf,
+            class_weight=class_weight,
+            target_n_jobs=target_n_jobs,
+            n_jobs=tree_n_jobs,
+            random_state=random_state,
+            **kwargs,
+        )
 
-        return np.column_stack(cols)
+
+class LogisticClassifier(ProbClassifier):
+    """
+    Logistic regression classifier
+
+    Logistic regression per target; parallelize across targets with target_n_jobs. Constant columns are handled by returning the observed
+    constant probability.
+    """
+
+    def __init__(
+        self,
+        penalty="l2",
+        C=1e6,
+        solver="liblinear",
+        max_iter=5000,
+        random_state=None,
+        target_n_jobs=1,
+        **kwargs,
+    ):
+        super().__init__(
+            estimator=LogisticRegression,
+            penalty=penalty,
+            C=C,
+            solver=solver,
+            max_iter=max_iter,
+            random_state=random_state,
+            target_n_jobs=target_n_jobs,
+            **kwargs,
+        )
+
+
+### GRAVEYARD ###
+
+# class LogisticClassifier(CIClassifier):
+#     """
+#     Logistic regression classifier
+#     """
+
+#     def __init__(self, **kwargs):
+#         super().__init__()
+#         self.logit_kwargs = kwargs
+#         self.estimators_ = None
+#         self.const_probs_ = None
+
+#     def _fit(self, X, y):
+
+#         y_arr = np.asarray(y)
+#         if y_arr.ndim == 1:
+#             y_arr = y_arr[:, None]
+
+#         n_targets = y_arr.shape[1]
+#         self.estimators_ = []
+#         self.const_probs_ = []
+
+#         for j in range(n_targets):
+#             y_j = y_arr[:, j]
+#             classes = np.unique(y_j)
+
+#             if classes.size < 2:  # prevent fit failure
+#                 self.estimators_.append(None)
+#                 self.const_probs_.append(float(classes[0]))
+#             else:
+#                 # Fit a standard logistic regression for this column
+#                 est = LogisticRegression(
+#                     penalty="l2",
+#                     C=1e6,
+#                     solver="liblinear",
+#                     max_iter=5000,
+#                     **self.logit_kwargs,
+#                 )
+#                 est.fit(X, y_j)
+#                 self.estimators_.append(est)
+#                 self.const_probs_.append(None)
+
+#     def _predict(self, X):
+#         probs = []
+#         for est, const_p in zip(self.estimators_, self.const_probs_):
+#             if est is None:
+#                 # Column was constant in training; use stored constant prob
+#                 probs.append(np.full(X.shape[0], const_p))
+#             else:
+#                 p = est.predict_proba(X)
+#                 # binary logit: p has shape (n_samples, 2), [:, 1] is P(R=1)
+#                 probs.append(p[:, 1])
+
+#         return np.column_stack(probs)
+
+
+# class RandomForest(CIClassifier):
+#     """
+#     Random Forest classifier
+#     """
+
+#     def __init__(self, **kwargs):
+#         super().__init__()
+
+#         # add lower than sklearn default for n_estimators
+#         if "n_estimators" in kwargs:
+#             n_estimators = kwargs.pop("n_estimators")
+#         else:
+#             n_estimators = 20
+
+#         self.model = RandomForestClassifier(
+#             **kwargs, n_estimators=n_estimators, max_features=None
+#         )
+
+#     def _fit(self, X, y):
+
+#         self.model.fit(X, y)
+
+#     def _predict(self, X):
+#         probas = self.model.predict_proba(X)
+#         prob_list = probas if isinstance(probas, list) else [probas]
+
+#         cols = [
+#             (
+#                 p[:, 1] if p.ndim > 1 and p.shape[1] > 1 else p[:, 0]
+#             )  # probability of R = 1
+#             for p in prob_list
+#         ]
+
+#         return np.column_stack(cols)
