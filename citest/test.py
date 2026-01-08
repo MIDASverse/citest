@@ -154,39 +154,9 @@ class CIMissTest:
                 errX_mean = errX.mean(axis=0)
                 errXY_mean = errXY.mean(axis=0)
 
-                # PREVIOUS CODE
-                # xij = np.mean(errX) - np.mean(errXY)
-                # m_diffs.append(xij)
-
-                # NEW WEIGHTED CODE
                 m_diffs.append(np.sum(w * (errX_mean - errXY_mean)))
 
             diffs.append(m_diffs)
-
-        # m = np.mean(np.concatenate(diffs))
-
-        # sigma2_k = np.var([np.mean(d) for d in diffs], ddof=1)
-
-        # n = len(sample_idxs)
-        # n_per_fold = n / self.n_folds
-
-        # F_k = self.n_folds
-        # if m != 0:
-        #     t_k = m / np.sqrt((1 / F_k + n_per_fold / (n - n_per_fold)) * sigma2_k)
-        # else:
-        #     t_k = 0.0
-
-        # p_k = stats.t.sf(t_k, F_k - 1)
-
-        # p_2s = 2 * stats.t.sf(np.abs(t_k), F_k - 1)
-
-        # self.results = {
-        #     "m": m,
-        #     "sigma2_k": sigma2_k,
-        #     "t_k": t_k,
-        #     "p_k": p_k,
-        #     "p_2s": p_2s,
-        # }
 
         f_means = np.array(
             [np.mean(d) for d in diffs], dtype=float

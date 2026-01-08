@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 from typing import Optional, Dict, List
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -26,6 +27,13 @@ def _to_binary_gate(series):
     # otherwise threshold at median
     med = np.nanmedian(s.astype(float))
     return s.astype(float) > med
+
+
+def _get_cache_dir() -> Path:
+    """Shared cache directory for downloaded datasets."""
+    cache_dir = Path.home() / ".cache" / "citest_datasets"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
 
 
 class Dataset(BaseModel):
@@ -116,7 +124,11 @@ class Dataset(BaseModel):
     def _get_wgts(self):
         miss = self.miss_data.isnull().mean(axis=0).to_numpy()
         raw_wgts = miss * (1 - miss)
-        self.weights = raw_wgts / raw_wgts.sum()
+        w_sum = raw_wgts.sum()
+        if not np.isfinite(w_sum) or w_sum <= 0:
+            self.weights = np.full_like(raw_wgts, 1.0 / raw_wgts.size, dtype=float)
+        else:
+            self.weights = raw_wgts / w_sum
 
     def make(self, data: pd.DataFrame, y: str, expl_vars=None, _onehot=True):
         """Create a Dataset object from a pandas DataFrame to be used for the RL test.
@@ -219,123 +231,6 @@ class Dataset(BaseModel):
             return raw_w / raw_w.sum()
 
         raise ValueError("level must be 'column' or 'variable'")
-
-
-def kuha(
-    n: int,
-    R_by: str,
-    R_in: str,
-    inc_Z: bool = False,
-) -> Dataset:
-    """Generates a simple linear dataset with controllable missingness.
-
-    Missing values can be set to be a function of either Y or X, and to be
-    missing in those same columns too. This allows us to test every combination
-    of MAR/MNAR and CI/NCI type of data.
-
-    Args:
-        n: Number of observations
-        R_by: The column that determines missing values ('X' or 'Y')
-        R_in: The column that will contain the missing values ('X' or 'Y')
-
-    Returns:
-        A Dataset object with the full data, missing data, and
-
-    Raises:
-        ValueError: An error generating or applying missing values to the chosen column
-    """
-    X = np.random.normal(0, 1, n)
-    Z = np.random.normal(0, 1, n)
-
-    if inc_Z:
-        Y = 5 * X + np.random.normal(0, 1, n)
-        full_data = pd.DataFrame({"Y": Y, "X": X, "Z": Z})
-    else:
-        Y = 5 * X + np.random.normal(0, 1, n)
-        full_data = pd.DataFrame({"Y": Y, "X": X})
-
-    if R_by.upper() == "Y":
-        R_latent = Y
-    elif R_by.upper() == "X":
-        R_latent = X
-    else:
-        raise ValueError("R_by must be either 'Y' or 'X'")
-
-    R = (R_latent < np.quantile(R_latent, 0.5)).astype(int)
-
-    if R_in.upper() == "X":
-        X[R == 0] = np.nan
-    elif R_in.upper() == "Y":
-        Y[R == 0] = np.nan
-    else:
-        raise ValueError("R_in must be either 'X' or 'Y'")
-
-    if inc_Z:
-        corrupt_data = pd.DataFrame({"Y": Y, "X": X, "Z": Z})
-    else:
-        corrupt_data = pd.DataFrame({"Y": Y, "X": X})
-
-    kuha_dataset = Dataset()
-    kuha_dataset.make(corrupt_data, y="Y")
-    kuha_dataset.full_data = pd.DataFrame(full_data)
-    return kuha_dataset
-
-
-def v4_dgp(
-    n: int,
-    R_by: str,
-    R_in: str,
-) -> Dataset:
-    """Generates a simple linear dataset with controllable missingness.
-
-    Missing values can be set to be a function of either Y or X, and to be
-    missing in those same columns too. This allows us to test every combination
-    of MAR/MNAR and CI/NCI type of data.
-
-    Args:
-        n: Number of observations
-        R_by: The column that determines missing values ('X' or 'Y')
-        R_in: The column that will contain the missing values ('X' or 'Y')
-
-    Returns:
-        A Dataset object with the full data, missing data, and
-
-    Raises:
-        ValueError: An error generating or applying missing values to the chosen column
-    """
-    X1 = np.random.normal(0, 1, n)
-    X2 = np.random.normal(0, 1, n)
-    X3 = np.random.normal(0, 1, n)
-    X4 = np.random.normal(0, 1, n)
-    X5 = np.random.normal(0, 1, n)
-    Y = 5 * (X1 + X2 + X3 + X4 + X5) + np.random.normal(0, 1, n)
-
-    full_data = pd.DataFrame({"Y": Y, "X1": X1, "X2": X2, "X3": X3, "X4": X4, "X5": X5})
-
-    if R_by.upper() == "Y":
-        R_latent = Y
-    elif R_by.upper() == "X":
-        R_latent = X1
-    else:
-        raise ValueError("R_by must be either 'Y' or 'X'")
-
-    R = (R_latent < np.quantile(R_latent, 0.5)).astype(int)
-
-    if R_in.upper() == "X":
-        X1[R == 0] = np.nan
-    elif R_in.upper() == "Y":
-        Y[R == 0] = np.nan
-    else:
-        raise ValueError("R_in must be either 'X' or 'Y'")
-
-    corrupt_data = pd.DataFrame(
-        {"Y": Y, "X1": X1, "X2": X2, "X3": X3, "X4": X4, "X5": X5}
-    )
-
-    v4_dataset = Dataset()
-    v4_dataset.make(corrupt_data, y="Y")
-    v4_dataset.full_data = pd.DataFrame(full_data)
-    return v4_dataset
 
 
 def identify(
@@ -845,14 +740,14 @@ def adult_mnar(n=1000, ci=True, mcar_prop=0.5, missing_mech: str = "linear") -> 
     return a_dataset
 
 
-def mushrooms(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
+def mushrooms(n=1000, ci=True, mcar_prop=0.5, missing_mech: str = "linear") -> Dataset:
 
     path = files("citest.data_examples").joinpath("agaricus-lepiota.data")
     mushrooms = pd.read_csv(path, delimiter=",", header=None)
     mushrooms.columns = ["y"] + [f"X{i}" for i in range(1, mushrooms.shape[1])]
     idxs = np.random.choice(mushrooms.shape[0], n)
 
-    mushrooms_compl = mushrooms.iloc[idxs, :].copy()
+    mushrooms_compl = mushrooms.iloc[idxs, :].copy().reset_index(drop=True)
 
     mushrooms_compl.loc[:, "y"] = mushrooms_compl["y"].map({"p": 0, "e": 1})
 
@@ -872,17 +767,44 @@ def mushrooms(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
     )
 
     # Missing pattern
-    mushrooms_miss = m_dataset.miss_data.copy().reset_index(drop=True)
+    mushrooms_miss = m_dataset.miss_data.copy()
+    rng_u = np.random.rand(mushrooms_miss.shape[0])
 
-    if not ci:
-        for i in range(mushrooms_miss.shape[0]):
-            if mushrooms_miss["y"].iloc[i] == 1 and np.random.rand() < 0.9:
-                mushrooms_miss.loc[i, odor_cols] = pd.NA
+    mech = missing_mech.lower()
+    if mech == "linear":
+        if ci:
+            trigger = (mushrooms_compl["X4"] == "t").to_numpy()
+        else:
+            trigger = mushrooms_miss["y"].to_numpy() == 1
+
+    elif mech == "xor":
+        # gate 1: bruises flag (observed X4)
+        g1 = (mushrooms_compl["X4"] == "t").to_numpy()
+
+        # gate 2: choose any observed non-odor covariate after OHE
+        gate_candidates = [
+            c
+            for c in m_dataset.full_data.columns
+            if c not in (["y"] + odor_cols) and not c.startswith("X4_")
+        ]
+        if len(gate_candidates) == 0:
+            g2 = np.random.rand(mushrooms_miss.shape[0]) < 0.5
+        else:
+            g2 = _to_binary_gate(m_dataset.full_data[gate_candidates[0]]).to_numpy()
+
+        base = g1 ^ g2  # XOR to create non-linear gate
+
+        if ci:
+            trigger = base
+        else:
+            # add outcome parity flip to inject Y dependence nonlinearly
+            trigger = base ^ (mushrooms_miss["y"].to_numpy() == 1)
 
     else:
-        for i in range(mushrooms_miss.shape[0]):
-            if mushrooms_compl["X6"].iloc[i] == "t" and np.random.rand() < 0.9:
-                mushrooms_miss.loc[i, odor_cols] = pd.NA
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
+
+    miss_rows = trigger & (rng_u < 0.9)
+    mushrooms_miss.loc[miss_rows, odor_cols] = pd.NA
 
     for c in np.random.choice(
         a=mushrooms_miss.shape[1] - 1,
@@ -905,3 +827,749 @@ def mushrooms(n=1000, ci=True, mcar_prop=0.5) -> Dataset:
     m_dataset._get_wgts()
 
     return m_dataset
+
+
+def breast_cancer(
+    n=500, ci=True, mcar_prop=0.5, missing_mech: str = "linear"
+) -> Dataset:
+    """Wisconsin Diagnostic Breast Cancer dataset with MAR/MNAR-style masks."""
+
+    from sklearn.datasets import load_breast_cancer
+
+    data = load_breast_cancer(as_frame=True).frame.rename(columns={"target": "y"})
+    idxs = np.random.choice(data.shape[0], n)
+    compl = data.iloc[idxs, :].copy().reset_index(drop=True)
+    compl["y"] = compl["y"].astype(int)
+
+    bc_dataset = Dataset()
+    bc_dataset.make(compl, y="y")
+    bc_dataset.full_data = bc_dataset.miss_data.copy()
+
+    mask_cols = [c for c in bc_dataset.full_data.columns if c.startswith("worst")]
+    if len(mask_cols) == 0:
+        mask_cols = bc_dataset.full_data.columns[1:6].tolist()
+
+    bc_miss = bc_dataset.miss_data.copy()
+    rng_u = np.random.rand(bc_miss.shape[0])
+
+    tex_col = (
+        "mean texture"
+        if "mean texture" in compl.columns
+        else bc_dataset.full_data.columns[1]
+    )
+    gate_col = (
+        "perimeter error"
+        if "perimeter error" in compl.columns
+        else bc_dataset.full_data.columns[min(2, bc_dataset.full_data.shape[1] - 1)]
+    )
+
+    mech = missing_mech.lower()
+    if mech == "linear":
+        if ci:
+            trigger = (compl[tex_col] > compl[tex_col].median()).to_numpy()
+        else:
+            trigger = compl["y"].to_numpy() == 1
+
+    elif mech == "xor":
+        g1 = (compl[tex_col] > compl[tex_col].median()).to_numpy()
+        g2 = _to_binary_gate(bc_dataset.full_data[gate_col]).to_numpy()
+        base = g1 ^ g2
+
+        if ci:
+            trigger = base
+        else:
+            trigger = base ^ (compl["y"].to_numpy() == 1)
+
+    else:
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
+
+    miss_rows = trigger & (rng_u < 0.9)
+    bc_miss.loc[miss_rows, mask_cols] = pd.NA
+
+    for c in np.random.choice(
+        a=bc_miss.shape[1] - 1,
+        size=int(bc_miss.shape[1] * mcar_prop),
+    ):
+        bc_miss.iloc[
+            np.random.choice(bc_miss.shape[0], int(bc_miss.shape[0] * 0.5)), c + 1
+        ] = np.nan
+
+    bc_dataset.miss_data = bc_miss
+    bc_dataset.mask = ~bc_dataset.miss_data.isnull().to_numpy()
+
+    assert bc_dataset.full_data.shape == bc_dataset.miss_data.shape
+    assert (bc_dataset.full_data.columns == bc_dataset.miss_data.columns).all()
+
+    bc_dataset._get_wgts()
+
+    return bc_dataset
+
+
+def wine(n=500, ci=True, mcar_prop=0.5, missing_mech: str = "linear") -> Dataset:
+    """UCI Wine dataset with controllable MAR/MNAR masking."""
+
+    from sklearn.datasets import load_wine
+
+    data = load_wine(as_frame=True).frame.rename(columns={"target": "y"})
+    idxs = np.random.choice(data.shape[0], n)
+    compl = data.iloc[idxs, :].copy().reset_index(drop=True)
+    compl["y"] = compl["y"].astype(int)
+
+    w_dataset = Dataset()
+    w_dataset.make(compl, y="y")
+    w_dataset.full_data = w_dataset.miss_data.copy()
+
+    mask_cols = [
+        c for c in w_dataset.full_data.columns if "phenols" in c or "color" in c
+    ]
+    if len(mask_cols) == 0:
+        mask_cols = w_dataset.full_data.columns[1:5].tolist()
+
+    w_miss = w_dataset.miss_data.copy()
+    rng_u = np.random.rand(w_miss.shape[0])
+
+    hue_col = "hue" if "hue" in compl.columns else w_dataset.full_data.columns[1]
+    pro_col = (
+        "proline"
+        if "proline" in compl.columns
+        else w_dataset.full_data.columns[min(2, w_dataset.full_data.shape[1] - 1)]
+    )
+
+    mech = missing_mech.lower()
+    if mech == "linear":
+        if ci:
+            trigger = (compl[hue_col] > compl[hue_col].median()).to_numpy()
+        else:
+            trigger = compl["y"].to_numpy() == 2
+
+    elif mech == "xor":
+        g1 = (compl[hue_col] > compl[hue_col].median()).to_numpy()
+        g2 = _to_binary_gate(w_dataset.full_data[pro_col]).to_numpy()
+        base = g1 ^ g2
+
+        if ci:
+            trigger = base
+        else:
+            trigger = base ^ (compl["y"].to_numpy() == 2)
+
+    else:
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
+
+    miss_rows = trigger & (rng_u < 0.9)
+    w_miss.loc[miss_rows, mask_cols] = pd.NA
+
+    for c in np.random.choice(
+        a=w_miss.shape[1] - 1,
+        size=int(w_miss.shape[1] * mcar_prop),
+    ):
+        w_miss.iloc[
+            np.random.choice(w_miss.shape[0], int(w_miss.shape[0] * 0.5)), c + 1
+        ] = np.nan
+
+    w_dataset.miss_data = w_miss
+    w_dataset.mask = ~w_dataset.miss_data.isnull().to_numpy()
+
+    assert w_dataset.full_data.shape == w_dataset.miss_data.shape
+    assert (w_dataset.full_data.columns == w_dataset.miss_data.columns).all()
+
+    w_dataset._get_wgts()
+
+    return w_dataset
+
+
+def diabetes(n=442, ci=True, mcar_prop=0.5, missing_mech: str = "linear") -> Dataset:
+    """Diabetes progression dataset with MAR/MNAR masks (regression target)."""
+
+    from sklearn.datasets import load_diabetes
+
+    data = load_diabetes(as_frame=True).frame.rename(columns={"target": "y"})
+    idxs = np.random.choice(data.shape[0], n)
+    compl = data.iloc[idxs, :].copy().reset_index(drop=True)
+    compl["y"] = compl["y"].astype(float)
+
+    d_dataset = Dataset()
+    d_dataset.make(compl, y="y")
+    d_dataset.full_data = d_dataset.miss_data.copy()
+
+    mask_cols = [c for c in d_dataset.full_data.columns if c in {"bmi", "bp", "s5"}]
+    if len(mask_cols) == 0:
+        mask_cols = d_dataset.full_data.columns[1:5].tolist()
+
+    d_miss = d_dataset.miss_data.copy()
+    rng_u = np.random.rand(d_miss.shape[0])
+
+    bmi_col = "bmi" if "bmi" in compl.columns else d_dataset.full_data.columns[1]
+    age_col = (
+        "age"
+        if "age" in compl.columns
+        else d_dataset.full_data.columns[min(2, d_dataset.full_data.shape[1] - 1)]
+    )
+
+    mech = missing_mech.lower()
+    if mech == "linear":
+        if ci:
+            trigger = (compl[bmi_col] > compl[bmi_col].median()).to_numpy()
+        else:
+            trigger = compl["y"].to_numpy() > np.median(compl["y"])
+
+    elif mech == "xor":
+        g1 = (compl[age_col] > compl[age_col].median()).to_numpy()
+        g2 = _to_binary_gate(compl[bmi_col]).to_numpy()
+        base = g1 ^ g2
+
+        if ci:
+            trigger = base
+        else:
+            trigger = base ^ (compl["y"].to_numpy() > np.median(compl["y"]))
+
+    else:
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
+
+    miss_rows = trigger & (rng_u < 0.9)
+    d_miss.loc[miss_rows, mask_cols] = pd.NA
+
+    for c in np.random.choice(
+        a=d_miss.shape[1] - 1,
+        size=int(d_miss.shape[1] * mcar_prop),
+    ):
+        d_miss.iloc[
+            np.random.choice(d_miss.shape[0], int(d_miss.shape[0] * 0.5)), c + 1
+        ] = np.nan
+
+    d_dataset.miss_data = d_miss
+    d_dataset.mask = ~d_dataset.miss_data.isnull().to_numpy()
+
+    assert d_dataset.full_data.shape == d_dataset.miss_data.shape
+    assert (d_dataset.full_data.columns == d_dataset.miss_data.columns).all()
+
+    d_dataset._get_wgts()
+
+    return d_dataset
+
+
+def covertype(n=5000, ci=True, mcar_prop=0.3, missing_mech: str = "linear") -> Dataset:
+    """Forest CoverType dataset with MAR/MNAR-style masking."""
+
+    from sklearn.datasets import fetch_covtype
+
+    data = fetch_covtype(as_frame=True, data_home=_get_cache_dir())
+    frame = data.frame.copy()
+    frame = frame.rename(columns={"Cover_Type": "y"})
+
+    n = min(n, frame.shape[0])
+    idxs = np.random.choice(frame.shape[0], n, replace=False)
+    compl = frame.iloc[idxs, :].reset_index(drop=True)
+    compl["y"] = compl["y"].astype(int)
+
+    cv_dataset = Dataset()
+    cv_dataset.make(compl, y="y")
+    cv_dataset.full_data = cv_dataset.miss_data.copy()
+
+    mask_cols = [
+        c for c in cv_dataset.full_data.columns if "Soil" in c or "Wilderness" in c
+    ]
+    if len(mask_cols) == 0:
+        mask_cols = cv_dataset.full_data.columns[1:6].tolist()
+
+    cv_miss = cv_dataset.miss_data.copy()
+    rng_u = np.random.rand(cv_miss.shape[0])
+
+    elev_col = (
+        "Elevation" if "Elevation" in compl.columns else cv_dataset.full_data.columns[1]
+    )
+    aspect_col = (
+        "Aspect"
+        if "Aspect" in compl.columns
+        else cv_dataset.full_data.columns[min(2, cv_dataset.full_data.shape[1] - 1)]
+    )
+
+    mech = missing_mech.lower()
+    if mech == "linear":
+        if ci:
+            trigger = (compl[elev_col] > compl[elev_col].median()).to_numpy()
+        else:
+            trigger = compl["y"].to_numpy() == 1
+
+    elif mech == "xor":
+        g1 = (compl[elev_col] > compl[elev_col].median()).to_numpy()
+        g2 = _to_binary_gate(cv_dataset.full_data[aspect_col]).to_numpy()
+        base = g1 ^ g2
+        if ci:
+            trigger = base
+        else:
+            trigger = base ^ (compl["y"].to_numpy() == 1)
+
+    else:
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
+
+    miss_rows = trigger & (rng_u < 0.9)
+    cv_miss.loc[miss_rows, mask_cols] = pd.NA
+
+    for c in np.random.choice(
+        a=cv_miss.shape[1] - 1,
+        size=int(cv_miss.shape[1] * mcar_prop),
+    ):
+        cv_miss.iloc[
+            np.random.choice(cv_miss.shape[0], int(cv_miss.shape[0] * 0.5)), c + 1
+        ] = np.nan
+
+    cv_dataset.miss_data = cv_miss
+    cv_dataset.mask = ~cv_dataset.miss_data.isnull().to_numpy()
+
+    assert cv_dataset.full_data.shape == cv_dataset.miss_data.shape
+    assert (cv_dataset.full_data.columns == cv_dataset.miss_data.columns).all()
+
+    cv_dataset._get_wgts()
+
+    return cv_dataset
+
+
+def california_housing(
+    n=20000, ci=True, mcar_prop=0.3, missing_mech: str = "linear"
+) -> Dataset:
+    """California Housing regression dataset with MAR/MNAR masks."""
+
+    from sklearn.datasets import fetch_california_housing
+
+    data = fetch_california_housing(as_frame=True, data_home=_get_cache_dir())
+    frame = data.frame.copy()
+    frame = frame.rename(columns={"MedHouseVal": "y"})
+
+    n = min(n, frame.shape[0])
+    idxs = np.random.choice(frame.shape[0], n, replace=False)
+    compl = frame.iloc[idxs, :].reset_index(drop=True)
+    compl["y"] = compl["y"].astype(float)
+
+    ca_dataset = Dataset()
+    ca_dataset.make(compl, y="y")
+    ca_dataset.full_data = ca_dataset.miss_data.copy()
+
+    mask_cols = [
+        c
+        for c in ca_dataset.full_data.columns
+        if c in {"MedInc", "AveRooms", "AveBedrms"}
+    ]
+    if len(mask_cols) == 0:
+        mask_cols = ca_dataset.full_data.columns[1:5].tolist()
+
+    ca_miss = ca_dataset.miss_data.copy()
+    rng_u = np.random.rand(ca_miss.shape[0])
+
+    age_col = (
+        "HouseAge" if "HouseAge" in compl.columns else ca_dataset.full_data.columns[1]
+    )
+    lat_col = (
+        "Latitude"
+        if "Latitude" in compl.columns
+        else ca_dataset.full_data.columns[min(2, ca_dataset.full_data.shape[1] - 1)]
+    )
+
+    mech = missing_mech.lower()
+    if mech == "linear":
+        if ci:
+            trigger = (compl[age_col] > compl[age_col].median()).to_numpy()
+        else:
+            trigger = compl["y"].to_numpy() > np.median(compl["y"])
+
+    elif mech == "xor":
+        g1 = (compl[age_col] > compl[age_col].median()).to_numpy()
+        g2 = _to_binary_gate(ca_dataset.full_data[lat_col]).to_numpy()
+        base = g1 ^ g2
+        if ci:
+            trigger = base
+        else:
+            trigger = base ^ (compl["y"].to_numpy() > np.median(compl["y"]))
+
+    else:
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
+
+    miss_rows = trigger & (rng_u < 0.9)
+    ca_miss.loc[miss_rows, mask_cols] = pd.NA
+
+    for c in np.random.choice(
+        a=ca_miss.shape[1] - 1,
+        size=int(ca_miss.shape[1] * mcar_prop),
+    ):
+        ca_miss.iloc[
+            np.random.choice(ca_miss.shape[0], int(ca_miss.shape[0] * 0.5)), c + 1
+        ] = np.nan
+
+    ca_dataset.miss_data = ca_miss
+    ca_dataset.mask = ~ca_dataset.miss_data.isnull().to_numpy()
+
+    assert ca_dataset.full_data.shape == ca_dataset.miss_data.shape
+    assert (ca_dataset.full_data.columns == ca_dataset.miss_data.columns).all()
+
+    ca_dataset._get_wgts()
+
+    return ca_dataset
+
+
+def german_credit(
+    n=1000, ci=True, mcar_prop=0.3, missing_mech: str = "linear"
+) -> Dataset:
+    """German credit (OpenML id=31) with MAR/MNAR masking on categorical features."""
+
+    from sklearn.datasets import fetch_openml
+
+    data = fetch_openml(
+        "credit-g", version=1, as_frame=True, data_home=_get_cache_dir()
+    )
+    frame = data.frame.copy()
+    frame = frame.rename(columns={"class": "y"})
+    frame["y"] = frame["y"].map({"good": 1, "bad": 0})
+
+    n = min(n, frame.shape[0])
+    idxs = np.random.choice(frame.shape[0], n, replace=False)
+    compl = frame.iloc[idxs, :].reset_index(drop=True)
+    compl["y"] = compl["y"].astype(int)
+    compl = pd.concat([compl["y"], compl.drop(columns=["y"])], axis=1)
+
+    gc_dataset = Dataset()
+    gc_dataset.make(compl, y="y")
+    gc_dataset.full_data = gc_dataset.miss_data.copy()
+
+    mask_cols = [
+        c for c in gc_dataset.full_data.columns if "checking" in c or "saving" in c
+    ]
+    if len(mask_cols) == 0:
+        mask_cols = gc_dataset.full_data.columns[1:5].tolist()
+
+    gc_miss = gc_dataset.miss_data.copy()
+    rng_u = np.random.rand(gc_miss.shape[0])
+
+    dur_col = (
+        "duration" if "duration" in compl.columns else gc_dataset.full_data.columns[1]
+    )
+    amt_col = (
+        "credit_amount"
+        if "credit_amount" in compl.columns
+        else gc_dataset.full_data.columns[min(2, gc_dataset.full_data.shape[1] - 1)]
+    )
+
+    mech = missing_mech.lower()
+    if mech == "linear":
+        if ci:
+            trigger = (compl[dur_col] > compl[dur_col].median()).to_numpy()
+        else:
+            trigger = compl["y"].to_numpy() == 1
+
+    elif mech == "xor":
+        g1 = (compl[dur_col] > compl[dur_col].median()).to_numpy()
+        amt_numeric_full = pd.to_numeric(
+            gc_dataset.full_data[amt_col], errors="coerce"
+        ).fillna(0)
+        g2 = _to_binary_gate(amt_numeric_full).to_numpy()
+        base = g1 ^ g2
+        if ci:
+            trigger = base
+        else:
+            trigger = base ^ (compl["y"].to_numpy() == 1)
+
+    else:
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
+
+    miss_rows = trigger & (rng_u < 0.9)
+    gc_miss.loc[miss_rows, mask_cols] = pd.NA
+
+    for c in np.random.choice(
+        a=gc_miss.shape[1] - 1,
+        size=int(gc_miss.shape[1] * mcar_prop),
+    ):
+        gc_miss.iloc[
+            np.random.choice(gc_miss.shape[0], int(gc_miss.shape[0] * 0.5)), c + 1
+        ] = np.nan
+
+    gc_dataset.miss_data = gc_miss
+    gc_dataset.mask = ~gc_dataset.miss_data.isnull().to_numpy()
+
+    assert gc_dataset.full_data.shape == gc_dataset.miss_data.shape
+    assert (gc_dataset.full_data.columns == gc_dataset.miss_data.columns).all()
+
+    gc_dataset._get_wgts()
+
+    return gc_dataset
+
+
+def bank_marketing(
+    n=10000, ci=True, mcar_prop=0.3, missing_mech: str = "linear"
+) -> Dataset:
+    """Bank marketing (OpenML id=1461) with MAR/MNAR masking."""
+
+    from sklearn.datasets import fetch_openml
+
+    data = fetch_openml(
+        "bank-marketing", version=1, as_frame=True, data_home=_get_cache_dir()
+    )
+    frame = data.frame.copy()
+    target_col = "y" if "y" in frame.columns else data.target_names[0]
+    frame = frame.rename(columns={target_col: "y"})
+    frame["y"] = frame["y"].map({"yes": 1, "no": 0})
+
+    n = min(n, frame.shape[0])
+    idxs = np.random.choice(frame.shape[0], n, replace=False)
+    compl = frame.iloc[idxs, :].reset_index(drop=True)
+
+    bm_dataset = Dataset()
+    bm_dataset.make(compl, y="y")
+    bm_dataset.full_data = bm_dataset.miss_data.copy()
+
+    mask_cols = [
+        c for c in bm_dataset.full_data.columns if "contact" in c or "poutcome" in c
+    ]
+    if len(mask_cols) == 0:
+        mask_cols = bm_dataset.full_data.columns[1:6].tolist()
+
+    bm_miss = bm_dataset.miss_data.copy()
+    rng_u = np.random.rand(bm_miss.shape[0])
+
+    age_col = "age" if "age" in compl.columns else bm_dataset.full_data.columns[1]
+    dur_col = (
+        "duration"
+        if "duration" in compl.columns
+        else bm_dataset.full_data.columns[min(2, bm_dataset.full_data.shape[1] - 1)]
+    )
+
+    mech = missing_mech.lower()
+    if mech == "linear":
+        if ci:
+            trigger = (compl[age_col] > compl[age_col].median()).to_numpy()
+        else:
+            trigger = compl["y"].to_numpy() == 1
+
+    elif mech == "xor":
+        g1 = (compl[age_col] > compl[age_col].median()).to_numpy()
+        g2 = _to_binary_gate(bm_dataset.full_data[dur_col]).to_numpy()
+        base = g1 ^ g2
+        if ci:
+            trigger = base
+        else:
+            trigger = base ^ (compl["y"].to_numpy() == 1)
+
+    else:
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
+
+    miss_rows = trigger & (rng_u < 0.9)
+    bm_miss.loc[miss_rows, mask_cols] = pd.NA
+
+    for c in np.random.choice(
+        a=bm_miss.shape[1] - 1,
+        size=int(bm_miss.shape[1] * mcar_prop),
+    ):
+        bm_miss.iloc[
+            np.random.choice(bm_miss.shape[0], int(bm_miss.shape[0] * 0.5)), c + 1
+        ] = np.nan
+
+    bm_dataset.miss_data = bm_miss
+    bm_dataset.mask = ~bm_dataset.miss_data.isnull().to_numpy()
+
+    assert bm_dataset.full_data.shape == bm_dataset.miss_data.shape
+    assert (bm_dataset.full_data.columns == bm_dataset.miss_data.columns).all()
+
+    bm_dataset._get_wgts()
+
+    return bm_dataset
+
+
+def ames_housing(
+    n=3000, ci=True, mcar_prop=0.3, missing_mech: str = "linear"
+) -> Dataset:
+    """Ames housing prices (OpenML id=43952) with MAR/MNAR masking."""
+
+    from sklearn.datasets import fetch_openml
+
+    data = fetch_openml(data_id=43952, as_frame=True, data_home=_get_cache_dir())
+    frame = data.frame.copy()
+
+    preferred_targets = ["SalePrice", "saleprice", "Sale_Price", "sale_price"]
+    target_col = None
+
+    if data.target is not None and data.target.name in frame.columns:
+        target_col = data.target.name
+    else:
+        for cand in preferred_targets:
+            if cand in frame.columns:
+                target_col = cand
+                break
+    if target_col is None:
+        num_cols = frame.select_dtypes(include=[np.number]).columns.tolist()
+        target_col = num_cols[0] if len(num_cols) > 0 else frame.columns[0]
+
+    y_series = pd.to_numeric(frame[target_col], errors="coerce")
+    if not np.isfinite(y_series).any():
+        y_series = pd.Series(np.zeros(len(frame)), index=frame.index, dtype=float)
+    else:
+        y_series = y_series.fillna(y_series.median())
+
+    frame = frame.drop(columns=[target_col])
+    frame.insert(0, "y", y_series)
+
+    n = min(n, frame.shape[0])
+    idxs = np.random.choice(frame.shape[0], n, replace=False)
+    compl = frame.iloc[idxs, :].reset_index(drop=True)
+
+    ah_dataset = Dataset()
+    ah_dataset.make(compl, y="y")
+    ah_dataset.full_data = ah_dataset.miss_data.copy()
+
+    mask_cols = [
+        c for c in ah_dataset.full_data.columns if "Qual" in c or "GrLivArea" in c
+    ]
+    if len(mask_cols) == 0:
+        mask_cols = ah_dataset.full_data.columns[1:6].tolist()
+
+    ah_miss = ah_dataset.miss_data.copy()
+    rng_u = np.random.rand(ah_miss.shape[0])
+
+    qual_col = next(
+        (c for c in compl.columns if "OverallQual" in c),
+        ah_dataset.full_data.columns[1],
+    )
+    area_col = next(
+        (c for c in compl.columns if "GrLivArea" in c),
+        ah_dataset.full_data.columns[min(2, ah_dataset.full_data.shape[1] - 1)],
+    )
+
+    qual_numeric = pd.to_numeric(compl[qual_col], errors="coerce")
+    if not np.isfinite(qual_numeric).any():
+        qual_numeric = pd.Series(np.zeros(len(compl)), index=compl.index)
+
+    area_numeric_full = pd.to_numeric(ah_dataset.full_data[area_col], errors="coerce")
+    if not np.isfinite(area_numeric_full).any():
+        area_numeric_full = pd.Series(
+            np.zeros(len(ah_dataset.full_data)), index=ah_dataset.full_data.index
+        )
+
+    mech = missing_mech.lower()
+    if mech == "linear":
+        if ci:
+            trigger = (qual_numeric > qual_numeric.median()).to_numpy()
+        else:
+            trigger = compl["y"].to_numpy() > np.median(compl["y"])
+
+    elif mech == "xor":
+        g1 = (qual_numeric > qual_numeric.median()).to_numpy()
+        g2 = _to_binary_gate(
+            area_numeric_full.fillna(area_numeric_full.median())
+        ).to_numpy()
+        base = g1 ^ g2
+        if ci:
+            trigger = base
+        else:
+            trigger = base ^ (compl["y"].to_numpy() > np.median(compl["y"]))
+
+    else:
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
+
+    miss_rows = trigger & (rng_u < 0.9)
+    ah_miss.loc[miss_rows, mask_cols] = pd.NA
+
+    for c in np.random.choice(
+        a=ah_miss.shape[1] - 1,
+        size=int(ah_miss.shape[1] * mcar_prop),
+    ):
+        ah_miss.iloc[
+            np.random.choice(ah_miss.shape[0], int(ah_miss.shape[0] * 0.5)), c + 1
+        ] = np.nan
+
+    ah_dataset.miss_data = ah_miss
+    ah_dataset.mask = ~ah_dataset.miss_data.isnull().to_numpy()
+
+    assert ah_dataset.full_data.shape == ah_dataset.miss_data.shape
+    assert (ah_dataset.full_data.columns == ah_dataset.miss_data.columns).all()
+
+    ah_dataset._get_wgts()
+
+    return ah_dataset
+
+
+def give_me_some_credit(
+    n=10000, ci=True, mcar_prop=0.3, missing_mech: str = "linear"
+) -> Dataset:
+    """Give Me Some Credit (OpenML) credit default with MAR/MNAR masking."""
+
+    from sklearn.datasets import fetch_openml
+
+    data = fetch_openml(
+        "GiveMeSomeCredit", version=1, as_frame=True, data_home=_get_cache_dir()
+    )
+    frame = data.frame.copy()
+    target_col = (
+        "SeriousDlqin2yrs" if "SeriousDlqin2yrs" in frame.columns else data.target.name
+    )
+    frame = frame.rename(columns={target_col: "y"})
+    frame["y"] = pd.to_numeric(frame["y"], errors="coerce")
+
+    n = min(n, frame.shape[0])
+    idxs = np.random.choice(frame.shape[0], n, replace=False)
+    compl = frame.iloc[idxs, :].reset_index(drop=True)
+    compl["y"] = compl["y"].fillna(0).astype(int)
+    compl = pd.concat([compl["y"], compl.drop(columns=["y"])], axis=1)
+
+    g_dataset = Dataset()
+    g_dataset.make(compl, y="y")
+    g_dataset.full_data = g_dataset.miss_data.copy()
+
+    mask_cols = [
+        c
+        for c in g_dataset.full_data.columns
+        if "RevolvingUtilization" in c or "DebtRatio" in c
+    ]
+    if len(mask_cols) == 0:
+        mask_cols = g_dataset.full_data.columns[1:6].tolist()
+
+    g_miss = g_dataset.miss_data.copy()
+    rng_u = np.random.rand(g_miss.shape[0])
+
+    util_col = next(
+        (c for c in compl.columns if "RevolvingUtilization" in c),
+        g_dataset.full_data.columns[1],
+    )
+    age_col = (
+        "age"
+        if "age" in compl.columns
+        else g_dataset.full_data.columns[min(2, g_dataset.full_data.shape[1] - 1)]
+    )
+
+    mech = missing_mech.lower()
+    if mech == "linear":
+        if ci:
+            trigger = (compl[util_col] > compl[util_col].median()).to_numpy()
+        else:
+            trigger = compl["y"].to_numpy() == 1
+
+    elif mech == "xor":
+        g1 = (compl[util_col] > compl[util_col].median()).to_numpy()
+        age_numeric_full = pd.to_numeric(
+            g_dataset.full_data[age_col], errors="coerce"
+        ).fillna(0)
+        g2 = _to_binary_gate(age_numeric_full).to_numpy()
+        base = g1 ^ g2
+        if ci:
+            trigger = base
+        else:
+            trigger = base ^ (compl["y"].to_numpy() == 1)
+
+    else:
+        raise ValueError("missing_mech must be one of 'linear' or 'xor'")
+
+    miss_rows = trigger & (rng_u < 0.9)
+    g_miss.loc[miss_rows, mask_cols] = pd.NA
+
+    for c in np.random.choice(
+        a=g_miss.shape[1] - 1,
+        size=int(g_miss.shape[1] * mcar_prop),
+    ):
+        g_miss.iloc[
+            np.random.choice(g_miss.shape[0], int(g_miss.shape[0] * 0.5)), c + 1
+        ] = np.nan
+
+    g_dataset.miss_data = g_miss
+    g_dataset.mask = ~g_dataset.miss_data.isnull().to_numpy()
+
+    assert g_dataset.full_data.shape == g_dataset.miss_data.shape
+    assert (g_dataset.full_data.columns == g_dataset.miss_data.columns).all()
+
+    g_dataset._get_wgts()
+
+    return g_dataset
