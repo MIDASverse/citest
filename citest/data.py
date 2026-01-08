@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 
-from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from typing import Optional, Dict, List
+from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from importlib.resources import files
 from re import compile
@@ -49,11 +49,12 @@ class Dataset(BaseModel):
     full_data: Optional[pd.DataFrame] = None
     expl_vars: Optional[list] = None
     weights: Optional[np.ndarray] = None
+    y_name: Optional[str] = None
 
     # private vars:
-    _expl_vars: list = (
-        []
-    )  # private variable that will store correctly formatted one-hot encoded vars too
+    _expl_vars: List[int] = PrivateAttr(default_factory=list)
+    _raw_groups: Dict[str, List[str]] = PrivateAttr(default_factory=dict)
+    _raw_groups_idx: Dict[str, List[int]] = PrivateAttr(default_factory=dict)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -78,31 +79,37 @@ class Dataset(BaseModel):
             drop_first: A boolean indicating whether to drop the first level of each variable
 
         """
-        data_wide = pd.get_dummies(
-            data, dummy_na=True, dtype="boolean", drop_first=drop_first
+
+        data_wide = pd.get_dummies(data, dummy_na=True, drop_first=drop_first).astype(
+            float
         )
 
-        for col in data.columns:
-            if col + "_nan" in data_wide.columns:
+        self._expl_vars = []
+        self._raw_groups = {}
+        self._raw_groups_idx = {}
 
+        for col in data.columns:
+            nan_col = col + "_nan"
+            if nan_col in data_wide.columns:
                 exp_cols = data_wide.columns.str.startswith(col + "_")
 
+                group_cols = data_wide.columns[
+                    exp_cols & ~data_wide.columns.str.endswith("_nan")
+                ].tolist()
+
+                # map raw -> OHE cols
+                self._raw_groups[col] = group_cols
+
                 if col in self.expl_vars:
-                    self._expl_vars.extend(
-                        data_wide.columns[
-                            exp_cols
-                            & ~data_wide.columns.str.endswith(
-                                "_nan"
-                            )  # drop na indicator from tracker
-                        ]
-                    )
+                    self._expl_vars.extend(group_cols)
 
                 data_wide.loc[data[col].isnull(), exp_cols] = np.nan
 
-                data_wide.drop(col + "_nan", axis=1, inplace=True)
-
-            elif col in self.expl_vars:
-                self._expl_vars.append(col)
+                data_wide.drop(nan_col, axis=1, inplace=True)
+            else:
+                self._raw_groups[col] = [col]
+                if col in self.expl_vars:
+                    self._expl_vars.append(col)
 
         return data_wide
 
@@ -130,12 +137,13 @@ class Dataset(BaseModel):
                 "Data already exists -- please create a new Dataset object"
             )
 
-        if y in data.columns:
-            data = pd.concat([data[y], data.drop(y, axis=1)], axis=1)
-        else:
+        if y not in data.columns:
             raise ValueError(
                 "Outcome variable not found in data. Please provide a valid outcome variable name."
             )
+        self.y_name = y
+        # make sure y in first position
+        data = pd.concat([data[y], data.drop(y, axis=1)], axis=1)
 
         if expl_vars is not None:
             self.expl_vars = expl_vars
@@ -147,6 +155,9 @@ class Dataset(BaseModel):
         else:
             data_wide = data.copy()
             self._expl_vars = self.expl_vars.copy()
+            self._raw_groups = {c: [c] for c in data.columns}
+
+        self._raw_groups_idx = {}
 
         self.miss_data = data_wide
         self.mask = ~data_wide.isnull().to_numpy()
@@ -156,6 +167,58 @@ class Dataset(BaseModel):
         self._get_wgts()
 
         self._expl_vars = data_wide.columns.get_indexer(self._expl_vars).tolist()
+        self._raw_groups_idx = {
+            k: data_wide.columns.get_indexer(v).tolist()
+            for k, v in self._raw_groups.items()
+        }
+
+    def get_predictor_cols_idx(self) -> List[int]:
+        """Indices of predictors used in the test: [Y] + expanded expl vars."""
+        return [0] + self._expl_vars
+
+    def get_target_mask(self, level: str = "column") -> np.ndarray:
+        """
+        level="column": targets are per-wide-column (OHE columns)
+        level="variable": targets are per-raw-variable (Outcome + expl_vars)
+        """
+        if level == "column":
+            cols_idx = self.get_predictor_cols_idx()
+            return self.mask[:, cols_idx].astype(float)
+
+        if level == "variable":
+            # raw variables to score: outcome + raw expl_vars
+            raw_vars = [self.y_name] + list(self.expl_vars)
+            groups = [self._raw_groups_idx[v] for v in raw_vars]
+
+            # variable is observed iff all its wide columns are observed
+            return np.stack(
+                [self.mask[:, g].all(axis=1) for g in groups], axis=1
+            ).astype(float)
+
+        raise ValueError("level must be 'column' or 'variable'")
+
+    def get_target_weights(self, level: str = "column") -> np.ndarray:
+        """
+        Weights aligned with get_target_mask(level=...).
+        For variable-level: compute weights from variable-level missingness.
+        """
+        if level == "column":
+            cols_idx = self.get_predictor_cols_idx()
+            w = self.weights
+            if w is None or not np.isfinite(w).all():
+                return np.full(len(cols_idx), 1.0 / len(cols_idx))
+            w = w[cols_idx]
+            return w / w.sum()
+
+        if level == "variable":
+            mask_var = self.get_target_mask(level="variable")
+            miss = 1.0 - mask_var.mean(axis=0)
+            raw_w = miss * (1.0 - miss)
+            if not np.isfinite(raw_w).all() or raw_w.sum() == 0:
+                return np.full(mask_var.shape[1], 1.0 / mask_var.shape[1])
+            return raw_w / raw_w.sum()
+
+        raise ValueError("level must be 'column' or 'variable'")
 
 
 def kuha(

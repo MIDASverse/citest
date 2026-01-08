@@ -102,6 +102,33 @@ class DatasetTests(unittest.TestCase):
             all(isinstance(idx, (int, np.integer)) for idx in ds._expl_vars)
         )
 
+    def test_variable_level_mask_collapses_ohe_groups(self):
+        # Variable-level mask should collapse one-hot groups to a single target per raw variable
+        raw = pd.DataFrame(
+            {
+                "Y": [1, 1, 0, 0],
+                "Cat": ["a", "b", "a", np.nan],
+            }
+        )
+        ds = Dataset()
+        ds.make(raw, y="Y", expl_vars=["Cat"])
+
+        mask_col = ds.get_target_mask(level="column")
+        mask_var = ds.get_target_mask(level="variable")
+
+        # outcome + one raw explanatory variable
+        self.assertEqual(mask_var.shape, (raw.shape[0], 2))
+
+        # map full-column indices to their positions inside the predictor slice
+        pred_cols = ds.get_predictor_cols_idx()
+        col_to_pos = {col_idx: pos for pos, col_idx in enumerate(pred_cols)}
+
+        cat_positions = [col_to_pos[idx] for idx in ds._raw_groups_idx["Cat"]]
+        collapsed_cat = mask_col[:, cat_positions].all(axis=1).astype(float)
+
+        np.testing.assert_array_equal(mask_var[:, 0], mask_col[:, col_to_pos[0]])
+        np.testing.assert_array_equal(mask_var[:, 1], collapsed_cat)
+
 
 class ImputerTests(unittest.TestCase):
     def test_complete_imputer_uses_full_data(self):

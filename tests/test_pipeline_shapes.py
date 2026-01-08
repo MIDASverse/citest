@@ -95,6 +95,49 @@ class TestPipelineShapes(unittest.TestCase):
             )
         )
 
+    def test_variable_level_targets_align_with_one_hot_predictors(self):
+        ShapeCheckingClassifier.fit_records = []
+        ShapeCheckingClassifier.predict_records = []
+
+        raw = pd.DataFrame(
+            {
+                "Y": [1, 0, 1, 0, 1, 0],
+                "A": [0.5, 0.2, np.nan, 1.0, 1.2, 0.0],
+                "C": ["r", "b", "r", np.nan, "g", "b"],
+            }
+        )
+        dataset = Dataset()
+        dataset.make(raw, y="Y", expl_vars=["A", "C"])
+
+        test = CIMissTest(
+            dataset=dataset,
+            imputer=EchoImputer,
+            classifier=ShapeCheckingClassifier,
+            m=1,
+            n_folds=2,
+            target_level="variable",
+        )
+
+        test.run()
+
+        expected_feature_width = len(dataset.get_predictor_cols_idx())
+        expected_target_width = 1 + len(dataset.expl_vars)
+
+        feature_counts = [
+            x_shape[1] for x_shape, _ in ShapeCheckingClassifier.fit_records
+        ]
+        target_counts = [
+            y_shape[1] if len(y_shape) == 2 else 1
+            for _, y_shape in ShapeCheckingClassifier.fit_records
+        ]
+
+        self.assertEqual(set(feature_counts), {expected_feature_width})
+        self.assertEqual(set(target_counts), {expected_target_width})
+        self.assertEqual(len(feature_counts), test.n_folds * test.m * 2)
+
+        predict_feature_counts = [shape[1] for shape in ShapeCheckingClassifier.predict_records]
+        self.assertEqual(set(predict_feature_counts), {expected_feature_width})
+
 
 if __name__ == "__main__":
     unittest.main()
