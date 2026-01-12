@@ -6,7 +6,7 @@ from typing import Optional, Dict, List
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from importlib.resources import files
-from re import compile
+from re import compile, escape
 
 
 def _pick_gate_col(adult_wide, ed_cols):
@@ -550,6 +550,7 @@ def adult(
     path = files("citest.data_examples").joinpath("us-census-income.csv")
     adult = pd.read_csv(path)
 
+    # for knockoff testing purposes, limit to k columns if specified
     if k is not None:
         # Ensure these columns are always included
         base_vars = ["income", "education", "age"]
@@ -631,13 +632,30 @@ def adult(
     miss_rows = trigger & (rng_u < 0.9)
     adult_miss.loc[miss_rows, ed_cols] = pd.NA
 
+    raw_cols = [
+        c for c in adult_compl.columns if c not in ["income", "education", "age"]
+    ]
     for c in np.random.choice(
-        a=adult_miss.shape[1] - 1,
-        size=int(adult_miss.shape[1] * mcar_prop),
+        a=raw_cols,
+        size=int(len(raw_cols) * mcar_prop),
+        replace=False,
     ):
-        adult_miss.iloc[
-            np.random.choice(adult_miss.shape[0], int(adult_miss.shape[0] * 0.5)), c + 1
-        ] = np.nan
+        var_pat = compile(rf"^{escape(c)}_")
+        mcar_cols = [col for col in adult_wide.columns if var_pat.match(col)]
+        if len(mcar_cols) == 0 and c in adult_miss.columns:
+            mcar_cols = [c]
+        mcar_rows = np.random.choice(
+            adult_miss.shape[0], int(adult_miss.shape[0] * 0.5), replace=False
+        )
+        adult_miss.loc[mcar_rows, mcar_cols] = np.nan
+
+    # for c in np.random.choice(
+    #     a=adult_miss.shape[1] - 1,
+    #     size=int(adult_miss.shape[1] * mcar_prop),
+    # ):
+    #     adult_miss.iloc[
+    #         np.random.choice(adult_miss.shape[0], int(adult_miss.shape[0] * 0.5)), c + 1
+    #     ] = np.nan
 
     # Make dataset object
     a_dataset.full_data = adult_wide
@@ -719,13 +737,30 @@ def adult_mnar(n=1000, ci=True, mcar_prop=0.5, missing_mech: str = "linear") -> 
 
     adult_miss.loc[miss_rows, ed_cols] = pd.NA
 
+    raw_cols = [
+        c for c in adult_compl.columns if c not in ["income", "education", "age"]
+    ]
     for c in np.random.choice(
-        a=adult_miss.shape[1] - 1,
-        size=int(adult_miss.shape[1] * mcar_prop),
+        a=raw_cols,
+        size=int(len(raw_cols) * mcar_prop),
+        replace=False,
     ):
-        adult_miss.iloc[
-            np.random.choice(adult_miss.shape[0], int(adult_miss.shape[0] * 0.5)), c + 1
-        ] = np.nan
+        var_pat = compile(rf"^{escape(c)}_")
+        mcar_cols = [col for col in adult_wide.columns if var_pat.match(col)]
+        if len(mcar_cols) == 0 and c in adult_miss.columns:
+            mcar_cols = [c]
+        mcar_rows = np.random.choice(
+            adult_miss.shape[0], int(adult_miss.shape[0] * 0.5), replace=False
+        )
+        adult_miss.loc[mcar_rows, mcar_cols] = np.nan
+
+    # for c in np.random.choice(
+    #     a=adult_miss.shape[1] - 1,
+    #     size=int(adult_miss.shape[1] * mcar_prop),
+    # ):
+    #     adult_miss.iloc[
+    #         np.random.choice(adult_miss.shape[0], int(adult_miss.shape[0] * 0.5)), c + 1
+    #     ] = np.nan
 
     # Make dataset object
     a_dataset.full_data = adult_wide
