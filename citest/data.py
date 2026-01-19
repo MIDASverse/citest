@@ -441,7 +441,7 @@ def MAR1(
             # add Y-dependent interaction: XOR between sign(Y) and sign(X3)
             gate_Y = (y > 0).astype(int) ^ (x3 > 0).astype(int)
             gate_Y = 2.0 * gate_Y - 1.0
-            R_latent = base + 1.0 * gate_Y
+            R_latent = base + 5.0 * gate_Y
 
     else:
         raise ValueError("missing_mech must be one of 'linear' or 'xor'")
@@ -523,7 +523,7 @@ def MNAR1(
         else:
             gate_Y = (y > 0).astype(int) ^ (x3 > 0).astype(int)
             gate_Y = 2.0 * gate_Y - 1.0
-            R_latent = base + 1.2 * gate_Y
+            R_latent = base + 3.0 * gate_Y
 
     else:
         raise ValueError("missing_mech must be one of 'linear' or 'xor'")
@@ -544,7 +544,12 @@ def MNAR1(
 
 
 def adult(
-    n=1000, ci=True, mcar_prop=0.5, k=None, missing_mech: str = "linear"
+    n=1000,
+    ci=True,
+    mcar_prop=0.5,
+    k=None,
+    missing_mech: str = "linear",
+    beta_y: float = 6.0,
 ) -> Dataset:
 
     path = files("citest.data_examples").joinpath("us-census-income.csv")
@@ -606,25 +611,32 @@ def adult(
             trigger = y == 1
 
     elif mech == "xor":
-        # Primary gate from age (keep the same "age <= 30" flavour)
-        g1 = age <= 30
+        age_np = age.to_numpy()
+        y_np = y.to_numpy()
+
+        g1 = age_np <= 30
 
         gate_col = _pick_gate_col(adult_miss, ed_cols)
         if gate_col is None:
-            # fallback: nonlinear 1D gate from age decile parity (hard for plain logistic)
-            # e.g., alternating decades: 0–9,10–19,... -> parity
-            decade = (np.floor(age / 10.0)).astype(int)
+            decade = np.floor(age_np / 10.0).astype(int)
             g2 = decade % 2 == 0
         else:
-            g2 = _to_binary_gate(adult_miss[gate_col])
+            g2 = _to_binary_gate(adult_miss[gate_col]).to_numpy()
 
-        base = g1 ^ g2  # XOR: not linearly separable in (g1,g2)
+        eps = 0.05 * np.random.normal(size=adult_miss.shape[0])
+        gate_X = (g1 ^ g2).astype(float)
+        gate_X = 2.0 * gate_X - 1.0
+
+        base = gate_X + 0.3 * np.sin(age_np / 10.0) + eps
 
         if ci:
-            trigger = base
+            R_latent = base
         else:
-            # add Y in a nonlinear way: parity flip by income
-            trigger = base ^ (y == 1)
+            gate_Y = ((y_np == 1) ^ g2).astype(float)
+            gate_Y = 2.0 * gate_Y - 1.0
+            R_latent = base + beta_y * gate_Y
+
+        trigger = R_latent < np.quantile(R_latent, 0.2)
 
     else:
         raise ValueError("missing_mech must be one of 'linear' or 'xor'")
@@ -670,7 +682,9 @@ def adult(
     return a_dataset
 
 
-def adult_mnar(n=1000, ci=True, mcar_prop=0.5, missing_mech: str = "linear") -> Dataset:
+def adult_mnar(
+    n=1000, ci=True, mcar_prop=0.5, missing_mech: str = "linear", beta_y: float = 6.0
+) -> Dataset:
 
     path = files("citest.data_examples").joinpath("us-census-income.csv")
     adult = pd.read_csv(path)
@@ -713,24 +727,32 @@ def adult_mnar(n=1000, ci=True, mcar_prop=0.5, missing_mech: str = "linear") -> 
             miss_rows = male & (rng_u < 0.273)
 
     elif mech == "xor":
-        # Build an observed gate g2 from non-education features (sex is latent)
+        y_np = y.to_numpy()
+        age_np = age.to_numpy() if age is not None else None
+
         gate_col = _pick_gate_col(adult_miss, ed_cols)
-        if gate_col is None and age is not None:
-            decade = (np.floor(age / 10.0)).astype(int)
-            g2 = (decade % 2 == 0).to_numpy()
+        if gate_col is None and age_np is not None:
+            decade = np.floor(age_np / 10.0).astype(int)
+            g2 = decade % 2 == 0
         elif gate_col is not None:
             g2 = _to_binary_gate(adult_miss[gate_col]).to_numpy()
         else:
             g2 = np.random.rand(adult_miss.shape[0]) < 0.5
 
-        base = male ^ g2  # XOR between latent sex and observed covariate gate
+        eps = 0.05 * np.random.normal(size=adult_miss.shape[0])
+        gate_X = (male ^ g2).astype(float)
+        gate_X = 2.0 * gate_X - 1.0
+        base = gate_X + eps
 
         if ci:
-            # CI: depends on latent sex + observed gate, not on income
-            miss_rows = base & (rng_u < 0.9)
+            R_latent = base
         else:
-            # NCI: flip parity by income => introduces Y effect in a nonlinear way
-            miss_rows = (base ^ (y.to_numpy() == 1)) & (rng_u < 0.9)
+            gate_Y = ((y_np == 1) ^ g2).astype(float)
+            gate_Y = 2.0 * gate_Y - 1.0
+            R_latent = base + beta_y * gate_Y
+
+        trigger = R_latent < np.quantile(R_latent, 0.2)
+        miss_rows = trigger & (rng_u < 0.9)
 
     else:
         raise ValueError("missing_mech must be one of 'linear' or 'xor'")
