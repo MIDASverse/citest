@@ -242,7 +242,7 @@ class LogisticClassifier(ProbClassifier):
         self,
         penalty="l2",
         C=1e6,
-        solver="liblinear",
+        solver="lbfgs",
         max_iter=5000,
         random_state=None,
         n_features=None,
