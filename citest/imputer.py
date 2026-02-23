@@ -1,8 +1,10 @@
-import pandas as pd
+import warnings
 
+import numpy as np
+import pandas as pd
+from MIDAS2 import model as md
 from sklearn.experimental import enable_iterative_imputer  # noqa
 from sklearn.impute import IterativeImputer as skII
-from MIDAS2 import model as md
 
 from .data import Dataset
 
@@ -115,7 +117,6 @@ class IterativeImputer(Imputer):
     #     self.model = imputer
 
     def _complete(self, train_index=None, **kwargs):
-
         # set up imputers
         imputer_X = skII(**kwargs, sample_posterior=True)
         imputer_X.set_output(transform="pandas")
@@ -171,7 +172,6 @@ class IterativeImputer(Imputer):
                 )
 
             if y_missing:
-
                 imputer_y = skII(**kwargs, sample_posterior=True)
                 imputer_y.set_output(transform="pandas")
 
@@ -199,6 +199,138 @@ class IterativeImputer(Imputer):
         return imputations
 
 
+class IterativeImputer2(Imputer):
+    """IterativeImputer variant with extra numerical guards.
+
+    This class is intended to reduce rare `LinAlgError: SVD did not converge`
+    failures seen with `sample_posterior=True` on wide one-hot data where some
+    columns can become constant (or entirely missing) within a CV training split.
+    """
+
+    def __init__(self, dataset=None):
+        super().__init__(dataset)
+        self._prefill_X = {}
+
+    @staticmethod
+    def _compute_prefill_map(X_train: pd.DataFrame) -> dict:
+        prefill = {}
+        for col in X_train.columns:
+            observed = X_train[col].dropna().to_numpy()
+            if observed.size == 0:
+                prefill[col] = 0.0
+                continue
+
+            uniq = np.unique(observed)
+            if uniq.size <= 1:
+                prefill[col] = float(uniq[0])
+
+        return prefill
+
+    def _apply_prefill_map(self, X: pd.DataFrame) -> pd.DataFrame:
+        if not self._prefill_X:
+            return X
+
+        X_filled = X.copy()
+        for col, fill_value in self._prefill_X.items():
+            if col in X_filled.columns:
+                X_filled[col] = X_filled[col].fillna(fill_value)
+        return X_filled
+
+    @staticmethod
+    def _fit_imputer(X_train: pd.DataFrame, **kwargs):
+        imputer = skII(**kwargs, sample_posterior=True)
+        imputer.set_output(transform="pandas")
+        imputer.fit(X_train)
+        return imputer
+
+    def _complete(self, train_index=None, **kwargs):
+        data = self.dataset.miss_data.copy()
+
+        X_all = data.iloc[:, 1:].copy()
+        X_train = (
+            X_all.iloc[train_index, :].copy() if train_index is not None else X_all
+        )
+
+        self._prefill_X = self._compute_prefill_map(X_train)
+        X_train = self._apply_prefill_map(X_train)
+
+        try:
+            imputer_X = self._fit_imputer(X_train, **kwargs)
+        except np.linalg.LinAlgError as e:
+            retry_kwargs = dict(kwargs)
+            if "n_nearest_features" not in retry_kwargs:
+                p = int(X_train.shape[1])
+                if p > 1:
+                    retry_kwargs["n_nearest_features"] = min(20, p - 1)
+
+            if retry_kwargs != kwargs:
+                warnings.warn(
+                    "IterativeImputer2 hit LinAlgError during fit; retrying with "
+                    f"n_nearest_features={retry_kwargs.get('n_nearest_features')}. "
+                    f"Original error: {e}",
+                    RuntimeWarning,
+                )
+
+            imputer_X = self._fit_imputer(X_train, **retry_kwargs)
+
+        self.completed = True
+        self.model = imputer_X
+
+    def get_m_complete(self, m: int = 10, train_index=None, **kwargs) -> pd.DataFrame:
+        """Get m completed datasets (robust variant)."""
+
+        if self.model is None:
+            self._complete(train_index=train_index, **kwargs)
+
+        imputer_X = self.model
+        data = self.dataset.miss_data.copy()
+        y = data.iloc[:, [0]]
+        y_missing = y.isnull().any().any()
+
+        imputations = []
+        for _ in range(m):
+            X_all = self._apply_prefill_map(data.iloc[:, 1:])
+            data_X_imp = imputer_X.transform(X_all)
+
+            if data_X_imp.isnull().any().any():
+                raise RuntimeError(
+                    "X imputation left NaNs; would allow Y to leak into X."
+                )
+
+            if y_missing:
+                fit_df = pd.concat([data.iloc[:, 0], data_X_imp], axis=1)
+                fit_train = (
+                    fit_df.iloc[train_index, :] if train_index is not None else fit_df
+                )
+
+                try:
+                    imputer_y = self._fit_imputer(fit_train, **kwargs)
+                except np.linalg.LinAlgError as e:
+                    retry_kwargs = dict(kwargs)
+                    if "n_nearest_features" not in retry_kwargs:
+                        p = int(fit_train.shape[1])
+                        if p > 1:
+                            retry_kwargs["n_nearest_features"] = min(20, p - 1)
+
+                    if retry_kwargs != kwargs:
+                        warnings.warn(
+                            "IterativeImputer2 hit LinAlgError during outcome fit; retrying with "
+                            f"n_nearest_features={retry_kwargs.get('n_nearest_features')}. "
+                            f"Original error: {e}",
+                            RuntimeWarning,
+                        )
+
+                    imputer_y = self._fit_imputer(fit_train, **retry_kwargs)
+
+                imputed = imputer_y.transform(fit_df)
+            else:
+                imputed = pd.concat([y, data_X_imp], axis=1)
+
+            imputations.append(imputed)
+
+        return imputations
+
+
 class MidasImputer(Imputer):
     """Impute missing data with MIDAS
 
@@ -215,7 +347,6 @@ class MidasImputer(Imputer):
         super().__init__(dataset)
 
     def _complete(self, train_index=None, **kwargs):
-
         # allow manual epochs
         if "epochs" in kwargs:
             epochs = kwargs.pop("epochs")

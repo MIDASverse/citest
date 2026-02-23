@@ -1,12 +1,11 @@
+from importlib.resources import files
+from pathlib import Path
+from re import compile, escape
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
-
-from typing import Optional, Dict, List
 from pydantic import BaseModel, ConfigDict, PrivateAttr
-
-from importlib.resources import files
-from re import compile, escape
 
 
 def _pick_gate_col(adult_wide, ed_cols):
@@ -36,6 +35,87 @@ def _get_cache_dir() -> Path:
     return cache_dir
 
 
+def compute_kappa(
+    r2_x_z: float,
+    beta_yx: float,
+    gamma_x: float,
+) -> float:
+    """Theoretical imputation bias for CI testing.
+
+    Parameters
+    ----------
+    r2_x_z : float
+        R-squared of X on observed covariates Z (i.e. 1 - Var(V)/Var(X)).
+        In the single-proxy case this equals rho^2.
+    beta_yx : float
+        Coefficient of X in the Y equation.
+    gamma_x : float
+        Loading of X in the missingness equation.
+
+    Returns
+    -------
+    float
+        kappa = gamma_x * beta_yx * (1 - R2) / (1 + beta_yx^2 * (1 - R2))
+    """
+    residual = 1.0 - r2_x_z
+    return (gamma_x * beta_yx * residual) / (1.0 + beta_yx ** 2 * residual)
+
+
+def kappa_calibration_table(
+    r2_grid: Optional[List[float]] = None,
+    beta_grid: Optional[List[float]] = None,
+    gamma_grid: Optional[List[float]] = None,
+) -> pd.DataFrame:
+    """Produce a calibration table of kappa over realistic parameter ranges.
+
+    Default grids span typical survey / administrative data settings:
+    R2 from poor to strong imputation, and partial effects in the 0.1-0.5
+    standardised range.
+
+    Returns
+    -------
+    pd.DataFrame with columns r2_x_z, beta_yx, gamma_x, kappa, abs_kappa.
+    """
+    if r2_grid is None:
+        r2_grid = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    if beta_grid is None:
+        beta_grid = [0.1, 0.2, 0.3, 0.5]
+    if gamma_grid is None:
+        gamma_grid = [0.1, 0.2, 0.3, 0.5]
+
+    rows = []
+    for r2 in r2_grid:
+        for b in beta_grid:
+            for g in gamma_grid:
+                k = compute_kappa(r2, b, g)
+                rows.append({
+                    "r2_x_z": r2,
+                    "beta_yx": b,
+                    "gamma_x": g,
+                    "kappa": round(k, 5),
+                    "abs_kappa": round(abs(k), 5),
+                })
+    return pd.DataFrame(rows)
+
+
+def print_calibration_pivot(
+    df: Optional[pd.DataFrame] = None,
+    beta_yx: float = 0.3,
+) -> pd.DataFrame:
+    """Return a readable pivot: rows = R2, cols = gamma_x, for fixed beta_yx.
+
+    Useful for the appendix table. Call once per beta_yx value you want to
+    display.
+    """
+    if df is None:
+        df = kappa_calibration_table()
+    sub = df.query("beta_yx == @beta_yx")
+    piv = sub.pivot(index="r2_x_z", columns="gamma_x", values="kappa")
+    piv.index.name = "R²(X|Z)"
+    piv.columns = [f"γ_x = {c}" for c in piv.columns]
+    return piv
+
+
 class Dataset(BaseModel):
     """Object to store data and mask for missing data.
 
@@ -51,9 +131,9 @@ class Dataset(BaseModel):
         expl_vars: A list of column names specifying subset of columns used in analysis models (typically set using the `make` method).
     """
 
-    miss_data: pd.DataFrame = None
-    mask: np.ndarray = None
-    n: int = None
+    miss_data: Optional[pd.DataFrame] = None
+    mask: Optional[np.ndarray] = None
+    n: Optional[int] = None
     full_data: Optional[pd.DataFrame] = None
     expl_vars: Optional[list] = None
     weights: Optional[np.ndarray] = None
@@ -67,7 +147,6 @@ class Dataset(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __repr__(self):
-
         if self.miss_data is None:
             return "Dataset not fit to data yet. Please use the `make` method to create a Dataset object."
         else:
@@ -76,7 +155,7 @@ class Dataset(BaseModel):
                 Outcome: {self.miss_data.columns[0]}
                 Explanatory variables: {self.expl_vars}
                 
-                {round(100*np.sum(~self.mask)/np.prod(self.mask.shape),1)}% missing values
+                {round(100 * np.sum(~self.mask) / np.prod(self.mask.shape), 1)}% missing values
                 """
 
     def _dummy(self, data: pd.DataFrame, drop_first=False) -> pd.DataFrame:
@@ -232,32 +311,75 @@ class Dataset(BaseModel):
 
         raise ValueError("level must be 'column' or 'variable'")
 
+    def compute_kappa(
+        self,
+        r2_x_z: float,
+        beta_yx: float,
+        gamma_x: float,
+    ) -> float:
+        """Compute theoretical imputation bias kappa for CI testing.
 
-def identify(
-    n: int,
-    ci: bool,
-    eta: float = 0.0,
-) -> Dataset:
+        See module-level compute_kappa() for details.
+        """
+        return compute_kappa(r2_x_z, beta_yx, gamma_x)
 
-    Z = np.random.normal(loc=0, scale=1, size=n)
-    X = np.random.normal(loc=eta * Z, scale=1, size=n)
-    Y = np.random.normal(loc=0.5 * X + 0.5 * Z, scale=1, size=n)
 
-    if ci:
-        R = np.random.binomial(1, 1 / (1 + np.exp(-X)), size=n)
-    else:
-        R = np.random.binomial(1, 1 / (1 + np.exp(-Y)), size=n)
+# def identify(
+#     n: int,
+#     ci: bool,
+#     eta: float = 0.0,
+#     gamma_y: float = 1.0,
+#     miss_rate: float = 0.5,
+# ) -> Dataset:
+#     """DGP for illustrating partial identification of Y ⟂ R | X under missing X.
 
-    full_data = pd.DataFrame({"Y": Y, "X": X, "Z": Z})
+#     This design makes identifiability depend on how informative an observed proxy Z
+#     is for latent X. The proxy strength is controlled by eta through
+#     rho = eta / (1 + eta), so eta in {0, 1, 10, 100} maps to rho in
+#     {0, 0.5, 0.91, 0.99}.
 
-    X[R == 0] = np.nan
+#     When ci=True, missingness depends on X (self-censoring) but not on Y, so the
+#     conditional independence null holds in the full data. When ci=False, missingness
+#     also depends directly on Y via gamma_y, violating the null.
 
-    corrupt_data = pd.DataFrame({"Y": Y, "X": X, "Z": Z})
+#     Args:
+#         n: Number of observations.
+#         ci: Whether conditional independence holds in the full data.
+#         eta: Proxy-strength parameter for Z -> X information.
+#         gamma_y: Direct Y effect on missingness when ci=False.
+#         miss_rate: Target proportion missing in X.
+#     """
+#     if eta < 0:
+#         raise ValueError("eta must be non-negative")
+#     if not 0 < miss_rate < 1:
+#         raise ValueError("miss_rate must be in (0, 1)")
 
-    identify_dataset = Dataset()
-    identify_dataset.make(corrupt_data, y="Y")
-    identify_dataset.full_data = pd.DataFrame(full_data)
-    return identify_dataset
+#     # Map eta onto a bounded correlation-like scale so X variance is stable.
+#     rho = eta / (1.0 + eta)
+
+#     Z = np.random.normal(loc=0.0, scale=1.0, size=n)
+#     U = np.random.normal(loc=0.0, scale=1.0, size=n)
+
+#     # Latent regressor; low rho => weakly identified from observed Z.
+#     X = rho * Z + np.sqrt(max(1.0 - rho**2, 0.0)) * U
+#     Y = np.random.normal(loc=0.8 * X + 0.4 * Z, scale=1.0, size=n)
+
+#     eps_r = np.random.normal(loc=0.0, scale=1.0, size=n)
+#     R_latent = X + eps_r if ci else X + gamma_y * Y + eps_r
+
+#     # Missingness indicator where R=1 means X is observed.
+#     cutoff = np.quantile(R_latent, miss_rate)
+#     R = (R_latent >= cutoff).astype(int)
+
+#     full_data = pd.DataFrame({"Y": Y, "X": X, "Z": Z})
+#     X_corrupt = X.copy()
+#     X_corrupt[R == 0] = np.nan
+#     corrupt_data = pd.DataFrame({"Y": Y, "X": X_corrupt, "Z": Z})
+
+#     identify_dataset = Dataset()
+#     identify_dataset.make(corrupt_data, y="Y", expl_vars=["X", "Z"])
+#     identify_dataset.full_data = pd.DataFrame(full_data)
+#     return identify_dataset
 
 
 def single_mar(
@@ -378,6 +500,7 @@ def MAR1(
     n: int,
     ci: bool = True,
     missing_mech: str = "linear",
+    beta_y: float = 2.0,
 ) -> Dataset:
     """Generates the MAR-1 missing data pattern from King (2001).
 
@@ -404,59 +527,63 @@ def MAR1(
 
     M = np.ndarray(data.shape, dtype=bool)
     U1 = np.random.uniform(0, 1, n)
+    mech = missing_mech.lower()
 
-    # Y and X4 are MCAR:
+    # X4 is MCAR:
     M[:, 0] = True  # fully observed to preserve MAR condition
     M[:, 4] = U1 < 0.85
 
     # X3 is always observed:
     M[:, 3] = True
 
-    # X1 is MAR:
+    # X1 is MAR; X2 is MAR but variable:
     U2 = np.random.uniform(0, 1, n)
-    M[:, 1] = ~np.all([data[:, 3] < -1, U2 < 0.9], axis=0)
-
-    # X2 is MAR but variable:
     U3 = np.random.uniform(0, 1, n)
-    mech = missing_mech.lower()
+
     if mech == "linear":
+        M[:, 1] = ~np.all([data[:, 3] < -1, U2 < 0.9], axis=0)
         R_latent = data[:, 3] if ci else data[:, 0]
+        M[:, 2] = ~np.all([R_latent < np.quantile(R_latent, 0.2), U3 < 0.9], axis=0)
+
     elif mech == "xor":
+        # simple non-linear Y effect via an XOR interaction
         y = data[:, 0]
-        x1 = data[:, 1]
         x3 = data[:, 3]
 
-        eps = 0.05 * np.random.normal(size=n)
-
-        # baseline nonlinear in X-only (CI case) so still MAR
-        # includes XOR-like gate that plain logistic on raw vars won't model well
-        gate_X = (x1 > 0).astype(int) ^ (x3 > 0).astype(int)
-        gate_X = 2.0 * gate_X - 1.0
-
-        base = gate_X + 0.6 * np.sin(1.5 * x3) + 0.2 * np.cos(1.2 * x1) + eps
-
-        if ci:
-            R_latent = base
-        else:
-            # add Y-dependent interaction: XOR between sign(Y) and sign(X3)
-            gate_Y = (y > 0).astype(int) ^ (x3 > 0).astype(int)
+        g = np.abs(x3) > 1.0
+        gate_Y = None
+        if not ci:
+            gate_Y = ((y > 0) ^ g).astype(float)
             gate_Y = 2.0 * gate_Y - 1.0
-            R_latent = base + 5.0 * gate_Y
+
+        # keep marginal missingness close to original
+        eps1 = 0.1 * np.random.normal(size=n)
+        R1_latent = x3 + eps1 if ci else (x3 + eps1 + beta_y * gate_Y)
+        q = 0.15865525393145707  # Phi(-1)
+        M[:, 1] = ~np.all([R1_latent < np.quantile(R1_latent, q), U2 < 0.9], axis=0)
+
+        eps2 = 0.1 * np.random.normal(size=n)
+        base2 = np.sin(2.0 * x3) + eps2
+        R2_latent = base2 if ci else (base2 + beta_y * gate_Y)
+        M[:, 2] = ~np.all([R2_latent < np.quantile(R2_latent, 0.2), U3 < 0.9], axis=0)
 
     else:
         raise ValueError("missing_mech must be one of 'linear' or 'xor'")
-
-    M[:, 2] = ~np.all([R_latent < np.quantile(R_latent, 0.2), U3 < 0.9], axis=0)
 
     corrupt_data = data.copy()
     corrupt_data[~M] = np.nan
 
     MAR1_dataset = Dataset()
+    base_cols = ["Y", "X1", "X2", "X3", "X4"]
+    corrupt_df = pd.DataFrame(corrupt_data, columns=base_cols)
+    full_df = pd.DataFrame(data, columns=base_cols)
+
     MAR1_dataset.make(
-        pd.DataFrame(corrupt_data, columns=["Y", "X1", "X2", "X3", "X4"]), y="Y"
+        corrupt_df,
+        y="Y",
     )
 
-    MAR1_dataset.full_data = pd.DataFrame(data, columns=["Y", "X1", "X2", "X3", "X4"])
+    MAR1_dataset.full_data = full_df
 
     return MAR1_dataset
 
@@ -465,6 +592,7 @@ def MNAR1(
     n: int,
     ci: bool = True,
     missing_mech: str = "linear",
+    beta_y: float = 2.0,
 ) -> Dataset:
     """Generates the MAR-1 missing data pattern from King (2001).
 
@@ -491,6 +619,7 @@ def MNAR1(
 
     M = np.ndarray(data.shape, dtype=bool)
     U1 = np.random.uniform(0, 1, n)
+    mech = missing_mech.lower()
 
     # Y is always observed:
     M[:, 0] = True
@@ -500,45 +629,56 @@ def MNAR1(
     # X3 is always observed:
     M[:, 3] = True
 
-    # X1 is MAR:
+    # X1 is MAR; X2 is MNAR but CIMDA/CDMDA:
     U2 = np.random.uniform(0, 1, n)
-    M[:, 1] = ~np.all([data[:, 3] < -1, U2 < 0.9], axis=0)
-
-    # X2 is MNAR but CIMDA/CDMDA:
     U3 = np.random.uniform(0, 1, n)
     Z = np.random.normal(0, 1, n)
 
-    mech = missing_mech.lower()
     if mech == "linear":
+        M[:, 1] = ~np.all([data[:, 3] < -1, U2 < 0.9], axis=0)
         R_latent = Z if ci else Z + 2 * data[:, 0]
+        M[:, 2] = ~np.all([R_latent < np.quantile(R_latent, 0.2), U3 < 0.9], axis=0)
+
     elif mech == "xor":
         y = data[:, 0]
+        x2 = data[:, 2]
         x3 = data[:, 3]
-        eps = 0.05 * np.random.normal(size=n)
 
-        base = np.sin(2.0 * Z) + 0.2 * np.cos(1.5 * Z) + eps  # nonlinear Z-only
-
-        if ci:
-            R_latent = base
-        else:
-            gate_Y = (y > 0).astype(int) ^ (x3 > 0).astype(int)
+        g = np.abs(x3) > 1.0
+        gate_Y = None
+        if not ci:
+            gate_Y = ((y > 0) ^ g).astype(float)
             gate_Y = 2.0 * gate_Y - 1.0
-            R_latent = base + 3.0 * gate_Y
+
+        # keep marginal missingness close to original
+        eps1 = 0.1 * np.random.normal(size=n)
+        R1_latent = x3 + eps1 if ci else (x3 + eps1 + beta_y * gate_Y)
+        q = 0.15865525393145707  # Phi(-1)
+        M[:, 1] = ~np.all([R1_latent < np.quantile(R1_latent, q), U2 < 0.9], axis=0)
+
+        # X2: MNAR via dependence on X2 itself, plus XOR(Y, g(X3)) under NCI
+        eps2 = 0.1 * np.random.normal(size=n)
+        base2 = 0.5 * np.sin(x2) + 0.5 * np.sin(2.0 * x3) + eps2
+        R2_latent = base2 if ci else (base2 + beta_y * gate_Y)
+        M[:, 2] = ~np.all([R2_latent < np.quantile(R2_latent, 0.2), U3 < 0.9], axis=0)
 
     else:
         raise ValueError("missing_mech must be one of 'linear' or 'xor'")
-
-    M[:, 2] = ~np.all([R_latent < np.quantile(R_latent, 0.2), U3 < 0.9], axis=0)
 
     corrupt_data = data.copy()
     corrupt_data[~M] = np.nan
 
     MNAR1_dataset = Dataset()
+    base_cols = ["Y", "X1", "X2", "X3", "X4"]
+    corrupt_df = pd.DataFrame(corrupt_data, columns=base_cols)
+    full_df = pd.DataFrame(data, columns=base_cols)
+
     MNAR1_dataset.make(
-        pd.DataFrame(corrupt_data, columns=["Y", "X1", "X2", "X3", "X4"]), y="Y"
+        corrupt_df,
+        y="Y",
     )
 
-    MNAR1_dataset.full_data = pd.DataFrame(data, columns=["Y", "X1", "X2", "X3", "X4"])
+    MNAR1_dataset.full_data = full_df
 
     return MNAR1_dataset
 
@@ -551,7 +691,6 @@ def adult(
     missing_mech: str = "linear",
     beta_y: float = 6.0,
 ) -> Dataset:
-
     path = files("citest.data_examples").joinpath("us-census-income.csv")
     adult = pd.read_csv(path)
 
@@ -685,7 +824,6 @@ def adult(
 def adult_mnar(
     n=1000, ci=True, mcar_prop=0.5, missing_mech: str = "linear", beta_y: float = 6.0
 ) -> Dataset:
-
     path = files("citest.data_examples").joinpath("us-census-income.csv")
     adult = pd.read_csv(path)
 
@@ -798,7 +936,6 @@ def adult_mnar(
 
 
 def mushrooms(n=1000, ci=True, mcar_prop=0.5, missing_mech: str = "linear") -> Dataset:
-
     path = files("citest.data_examples").joinpath("agaricus-lepiota.data")
     mushrooms = pd.read_csv(path, delimiter=",", header=None)
     mushrooms.columns = ["y"] + [f"X{i}" for i in range(1, mushrooms.shape[1])]

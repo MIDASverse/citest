@@ -63,9 +63,7 @@ class TestDGPSmoke(unittest.TestCase):
         for ci in [True, False]:
             for mech in ["linear", "xor"]:
                 with self.subTest(ci=ci, mech=mech):
-                    ds = data.adult_mnar(
-                        n=50, ci=ci, mcar_prop=0.1, missing_mech=mech
-                    )
+                    ds = data.adult_mnar(n=50, ci=ci, mcar_prop=0.1, missing_mech=mech)
                     self._assert_basic_dataset(ds, 50)
 
     def test_mushrooms(self):
@@ -73,9 +71,7 @@ class TestDGPSmoke(unittest.TestCase):
         for ci in [True, False]:
             for mech in ["linear", "xor"]:
                 with self.subTest(ci=ci, mech=mech):
-                    ds = data.mushrooms(
-                        n=50, ci=ci, mcar_prop=0.1, missing_mech=mech
-                    )
+                    ds = data.mushrooms(n=50, ci=ci, mcar_prop=0.1, missing_mech=mech)
                     self._assert_basic_dataset(ds, 50)
 
     def test_breast_cancer(self):

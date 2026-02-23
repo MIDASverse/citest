@@ -1,0 +1,4 @@
+{
+  "tests/applied_all.py": true,
+  "tests/applied_template.py": true
+}

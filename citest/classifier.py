@@ -2,6 +2,7 @@ from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
 from sklearn.linear_model import LogisticRegression
 from joblib import Parallel, delayed
 import numpy as np
+import math
 
 
 class NotFittedError(Exception):
@@ -153,7 +154,7 @@ class RFClassifier(ProbClassifier):
         self,
         n_estimators=100,
         max_features="auto",
-        min_samples_leaf=5,
+        min_samples_leaf="auto",
         class_weight="balanced",
         n_features=None,
         target_n_jobs=1,
@@ -193,6 +194,32 @@ class RFClassifier(ProbClassifier):
             random_state=random_state,
             **kwargs,
         )
+
+    @staticmethod
+    def _auto_min_samples_leaf(n, n_features, lo=10, hi=50, default=5):
+        if n <= 0:
+            raise ValueError("n must be positive for auto min_samples_leaf")
+        if n == 1:
+            return 1
+
+        if n_features > 12:
+            leaf = int(default)
+        else:
+            leaf = int(round(math.sqrt(n)))
+            leaf = max(lo, min(hi, leaf))
+
+        upper = max(1, n // 2)
+        return max(1, min(leaf, upper))
+
+    def _fit(self, X, y):
+        # adjust min_samples_leaf if set to 'auto'
+        if self.base_kwargs.get("min_samples_leaf", None) == "auto":
+            n = X.shape[0]
+            n_features = self.n_features if self.n_features is not None else X.shape[1]
+            auto_msl = self._auto_min_samples_leaf(n, n_features)
+            self.base_kwargs["min_samples_leaf"] = auto_msl
+
+        super()._fit(X, y)
 
 
 class ETClassifier(ProbClassifier):

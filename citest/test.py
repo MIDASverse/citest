@@ -1,12 +1,11 @@
-from .data import *
-from .imputer import *
-from .classifier import *
-from .utils import BCEclip
-
 import numpy as np
 from scipy import stats
-
 from sklearn.model_selection import KFold
+
+from .classifier import CIClassifier, RFClassifier
+from .data import Dataset
+from .imputer import Imputer, MidasImputer
+from .utils import BCEclip
 
 
 class CIMissTest:
@@ -31,8 +30,8 @@ class CIMissTest:
     def __init__(
         self,
         dataset: Dataset,
-        imputer: Imputer = MidasImputer,
-        classifier: CIClassifier = RFClassifier,
+        imputer: type[Imputer] = MidasImputer,
+        classifier: type[CIClassifier] = RFClassifier,
         m: int = 10,
         n_folds: int = 10,
         classifier_args: dict = {},
@@ -66,7 +65,6 @@ class CIMissTest:
         )
 
     def _get_cv(self):
-
         if self.n_folds > self.dataset.n:
             raise ValueError(
                 f"Number of folds ({self.n_folds}) cannot exceed number of samples ({self.dataset.n})"
@@ -132,10 +130,8 @@ class CIMissTest:
         w: np.ndarray,
         nfeat: int,
     ) -> None:
-
         diffs = []
         for train_idx, test_idx in cv.split(sample_idxs):
-
             train_idx = sample_idxs[train_idx]
             test_idx = sample_idxs[test_idx]
 
@@ -275,7 +271,6 @@ class CIMissTest:
         w = np.asarray(w, dtype=float)
 
         for fold_idx, (train_rel, test_rel) in enumerate(cv.split(sample_idxs)):
-
             train_idx = sample_idxs[train_rel]
             test_idx = sample_idxs[test_rel]
 
@@ -339,9 +334,12 @@ class CIMissTest:
                 errX = BCEclip(predsX, test_R)
                 errXY = BCEclip(predsXY, test_R)
 
-                # observation-level weighted score: g_i = sum_j w_j (errX_ij - errXY_ij)
+                # observation-level weighted score
                 g = (errX - errXY) @ w
                 scores[b, test_pos] = g
+
+                # calculate relative score reduction (for diagnostics)
+                rel_score_reduction = 1 - (errXY @ w).mean() / (errX @ w).mean()
 
         if np.isnan(scores).any():
             raise RuntimeError(
@@ -361,6 +359,7 @@ class CIMissTest:
 
         # Within-imputation variance: use variability of fold means (with CV correction)
         # rather than Var_i(g_i)/n, since g_i are correlated within folds via shared fits.
+        # i.e. within each fold, what is the average (weighted) score per imputation?
         fold_means = np.empty((m_imp, K), dtype=float)
         for k in range(K):
             idx = fold_id == k
@@ -426,6 +425,7 @@ class CIMissTest:
             "p_k": p_k,
             "p_2s": p_2s,
             "df": df,
+            "rel_reduction": rel_score_reduction,
         }
 
     def summary(self):
