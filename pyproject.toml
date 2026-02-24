@@ -40,3 +40,11 @@ classifiers = [
 Homepage = "https://github.com/MIDASverse/citest"
 Repository = "https://github.com/MIDASverse/citest"
 Issues = "https://github.com/MIDASverse/citest/issues"
+Documentation = "https://midasverse.github.io/citest/"
+
+[project.optional-dependencies]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.27",
+]
