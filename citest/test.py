@@ -9,22 +9,30 @@ from .utils import BCEclip
 
 
 class CIMissTest:
-    """Run a conditional independence of missingness test on a dataset
+    """Conditional-independence-of-missingness test.
 
-    This class enables a test of the conditional independence of
-    missingness in a dataset. It is based on a comparison of
-    classifier performance with and without the outcome/target
-    variable.
+    Compares classifier loss for predicting the missingness indicator
+    with and without the outcome variable. A significant difference
+    implies missingness is not conditionally independent of the outcome.
 
-    Attributes:
-        dataset: A Dataset object
-        imputer: An Imputer object -- typically IterativeImputer
-        classifier: A CIClassifier object -- typically RandomForest
-        m: An integer with the number of multiply imputed datasets for the test
-        n_folds: An integer with the number of folds for cross-validation
-        classifier_args: A dictionary with keyword arguments for the classifier
-        imputer_args: A dictionary with keyword arguments for the imputer
-        results: A dictionary with the results of the test
+    Parameters
+    ----------
+    dataset : Dataset
+        Populated ``Dataset`` (call ``Dataset.make`` first).
+    imputer : type[Imputer]
+        Imputer class to use (default ``MidasImputer``).
+    classifier : type[CIClassifier]
+        Classifier class to use (default ``RFClassifier``).
+    m : int
+        Number of multiply-imputed datasets.
+    n_folds : int
+        Number of cross-validation folds.
+    classifier_args : dict
+        Extra keyword arguments forwarded to the classifier.
+    imputer_args : dict
+        Extra keyword arguments forwarded to the imputer.
+    variance_method : str
+        ``'mi_crossfit'`` (default) or ``'legacy_fold'``.
     """
 
     def __init__(

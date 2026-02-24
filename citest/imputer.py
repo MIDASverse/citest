@@ -10,20 +10,10 @@ from .data import Dataset
 
 
 class Imputer:
-    """Base model for imputing missing data
+    """Base imputer interface for CI missingness testing.
 
-    This class contains the core structure for imputing and accessing
-    missing data.
-
-    Plauibly, any imputer can be used with this API, so long as the `completed`
-    attribute is set either in the intialization or by a custom _complete method
-    call.
-
-    Attributes:
-        dataset: A Dataset object
-        model: A fitted imputation model
-        completed: A numpy array with all missing data imputed
-
+    Subclasses must set ``completed`` (via ``__init__`` or ``_complete``)
+    and implement ``get_m_complete`` to return multiply-imputed datasets.
     """
 
     def __init__(
@@ -45,12 +35,7 @@ class Imputer:
 
 
 class CompleteImputer(Imputer):
-    """Impute missing data with complete cases
-
-    This imputer fills in missing data with the full data. This is
-    used for simulation purposes, and cannot be used for real data tests.
-
-    """
+    """Oracle imputer that returns the full (pre-amputation) data. For simulation only."""
 
     def __init__(self, dataset=None):
         super().__init__(dataset)
@@ -69,12 +54,7 @@ class CompleteImputer(Imputer):
 
 
 class NullImputer(Imputer):
-    """Impute missing data with zeros
-
-    This imputer fills in missing data with zeros. This is used for
-    simulation testing, and likely will not work for real data tests.
-
-    """
+    """Zero-fill imputer. For simulation/testing only."""
 
     def __init__(self, dataset=None):
         super().__init__(dataset)
@@ -93,17 +73,12 @@ class NullImputer(Imputer):
 
 
 class IterativeImputer(Imputer):
-    """Impute missing data with an iterative imputer
+    """`sklearn.impute.IterativeImputer`_ wrapper with sequential Y|X imputation.
 
-    This imputer uses the sklearn IterativeImputer to fill in missing data.
+    Fits on X columns first, then imputes Y conditional on imputed X
+    to avoid outcome leakage.
 
-    This imputer can be used with real data. Additional arguments may be
-    passed to the imputation model through the imputer_args parameter in
-    the test module.
-
-    `max_iter` is an important parameter to consider when using this imputer.
-    If you find that the imputer does not converge, try increasing this
-    value.
+    .. _sklearn.impute.IterativeImputer: https://scikit-learn.org/stable/modules/generated/sklearn.impute.IterativeImputer.html
     """
 
     def __init__(self, dataset=None):
@@ -200,11 +175,12 @@ class IterativeImputer(Imputer):
 
 
 class IterativeImputer2(Imputer):
-    """IterativeImputer variant with extra numerical guards.
+    """`sklearn.impute.IterativeImputer`_ variant with extra numerical guards.
 
-    This class is intended to reduce rare `LinAlgError: SVD did not converge`
-    failures seen with `sample_posterior=True` on wide one-hot data where some
-    columns can become constant (or entirely missing) within a CV training split.
+    Prefills constant/empty columns and retries with reduced
+    ``n_nearest_features`` on ``LinAlgError``.
+
+    .. _sklearn.impute.IterativeImputer: https://scikit-learn.org/stable/modules/generated/sklearn.impute.IterativeImputer.html
     """
 
     def __init__(self, dataset=None):
@@ -332,15 +308,9 @@ class IterativeImputer2(Imputer):
 
 
 class MidasImputer(Imputer):
-    """Impute missing data with MIDAS
+    """`MIDAS2`_ deep-learning imputer (torch).
 
-    This imputer uses the new torch version of MIDAS to fill in missing data.
-
-    This imputer can be used with real data. Additional arguments may be
-    passed to the imputation model through the imputer_args parameter in
-    the test module.
-
-
+    .. _MIDAS2: https://github.com/MIDASverse/MIDASpy
     """
 
     def __init__(self, dataset=None):

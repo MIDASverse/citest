@@ -58,7 +58,7 @@ def compute_kappa(
         kappa = gamma_x * beta_yx * (1 - R2) / (1 + beta_yx^2 * (1 - R2))
     """
     residual = 1.0 - r2_x_z
-    return (gamma_x * beta_yx * residual) / (1.0 + beta_yx ** 2 * residual)
+    return (gamma_x * beta_yx * residual) / (1.0 + beta_yx**2 * residual)
 
 
 def kappa_calibration_table(
@@ -88,13 +88,15 @@ def kappa_calibration_table(
         for b in beta_grid:
             for g in gamma_grid:
                 k = compute_kappa(r2, b, g)
-                rows.append({
-                    "r2_x_z": r2,
-                    "beta_yx": b,
-                    "gamma_x": g,
-                    "kappa": round(k, 5),
-                    "abs_kappa": round(abs(k), 5),
-                })
+                rows.append(
+                    {
+                        "r2_x_z": r2,
+                        "beta_yx": b,
+                        "gamma_x": g,
+                        "kappa": round(k, 5),
+                        "abs_kappa": round(abs(k), 5),
+                    }
+                )
     return pd.DataFrame(rows)
 
 
@@ -117,18 +119,23 @@ def print_calibration_pivot(
 
 
 class Dataset(BaseModel):
-    """Object to store data and mask for missing data.
+    """Container for observed data, missingness mask, and (optionally) the
+    complete pre-amputation data.
 
-    This object stores, at minimum, the data with missing values and a mask of the missingness.
+    Call ``make(data, y, ...)`` to populate the dataset from a DataFrame.
 
-    For simulations, it can also store the full data.
-
-    Fields:
-        miss_data: A numpy array  with the data with missingness (recorded as np.nan)
-        mask: A pandas DataFrame with the same shape as miss_data, with True where data is observed
-        n: An integer with the number of observations in the data
-        full_data: A pandas DataFrame with the full data (i.e. no missingness)
-        expl_vars: A list of column names specifying subset of columns used in analysis models (typically set using the `make` method).
+    Attributes
+    ----------
+    miss_data : pd.DataFrame
+        Data with missing values (NaN).
+    mask : np.ndarray
+        Boolean array, True where data is observed.
+    n : int
+        Number of observations.
+    full_data : pd.DataFrame or None
+        Complete data (simulation only).
+    expl_vars : list[str]
+        Column names included in the analysis model.
     """
 
     miss_data: Optional[pd.DataFrame] = None
@@ -210,17 +217,18 @@ class Dataset(BaseModel):
             self.weights = raw_wgts / w_sum
 
     def make(self, data: pd.DataFrame, y: str, expl_vars=None, _onehot=True):
-        """Create a Dataset object from a pandas DataFrame to be used for the RL test.
+        """Populate the dataset from a pandas DataFrame.
 
-        Args:
-            data: A pandas DataFrame with missing values (recorded as np.nan)
-            y: A string with the name of the outcome variable. If not provided,
-                the first column will be assumed as the outcome.
-            expl_vars: A list of strings with the names of variables to be included in the conditional analysis. If not provided,
-                all columns except the outcome will be used. Note, more variables can be  used in the imputation stage.
-            _onehot: A boolean indicating whether to one-hot encode the data (default: True).
-                Integer, float, and binary variables will not be encoded.
-
+        Parameters
+        ----------
+        data : pd.DataFrame
+            Data with missing values as NaN.
+        y : str
+            Name of the outcome variable (moved to the first column).
+        expl_vars : list[str], optional
+            Columns for the analysis model. Defaults to all non-outcome columns.
+        _onehot : bool
+            One-hot encode categorical columns (default True).
         """
 
         if self.miss_data is not None:
@@ -324,82 +332,12 @@ class Dataset(BaseModel):
         return compute_kappa(r2_x_z, beta_yx, gamma_x)
 
 
-# def identify(
-#     n: int,
-#     ci: bool,
-#     eta: float = 0.0,
-#     gamma_y: float = 1.0,
-#     miss_rate: float = 0.5,
-# ) -> Dataset:
-#     """DGP for illustrating partial identification of Y ⟂ R | X under missing X.
-
-#     This design makes identifiability depend on how informative an observed proxy Z
-#     is for latent X. The proxy strength is controlled by eta through
-#     rho = eta / (1 + eta), so eta in {0, 1, 10, 100} maps to rho in
-#     {0, 0.5, 0.91, 0.99}.
-
-#     When ci=True, missingness depends on X (self-censoring) but not on Y, so the
-#     conditional independence null holds in the full data. When ci=False, missingness
-#     also depends directly on Y via gamma_y, violating the null.
-
-#     Args:
-#         n: Number of observations.
-#         ci: Whether conditional independence holds in the full data.
-#         eta: Proxy-strength parameter for Z -> X information.
-#         gamma_y: Direct Y effect on missingness when ci=False.
-#         miss_rate: Target proportion missing in X.
-#     """
-#     if eta < 0:
-#         raise ValueError("eta must be non-negative")
-#     if not 0 < miss_rate < 1:
-#         raise ValueError("miss_rate must be in (0, 1)")
-
-#     # Map eta onto a bounded correlation-like scale so X variance is stable.
-#     rho = eta / (1.0 + eta)
-
-#     Z = np.random.normal(loc=0.0, scale=1.0, size=n)
-#     U = np.random.normal(loc=0.0, scale=1.0, size=n)
-
-#     # Latent regressor; low rho => weakly identified from observed Z.
-#     X = rho * Z + np.sqrt(max(1.0 - rho**2, 0.0)) * U
-#     Y = np.random.normal(loc=0.8 * X + 0.4 * Z, scale=1.0, size=n)
-
-#     eps_r = np.random.normal(loc=0.0, scale=1.0, size=n)
-#     R_latent = X + eps_r if ci else X + gamma_y * Y + eps_r
-
-#     # Missingness indicator where R=1 means X is observed.
-#     cutoff = np.quantile(R_latent, miss_rate)
-#     R = (R_latent >= cutoff).astype(int)
-
-#     full_data = pd.DataFrame({"Y": Y, "X": X, "Z": Z})
-#     X_corrupt = X.copy()
-#     X_corrupt[R == 0] = np.nan
-#     corrupt_data = pd.DataFrame({"Y": Y, "X": X_corrupt, "Z": Z})
-
-#     identify_dataset = Dataset()
-#     identify_dataset.make(corrupt_data, y="Y", expl_vars=["X", "Z"])
-#     identify_dataset.full_data = pd.DataFrame(full_data)
-#     return identify_dataset
-
-
 def single_mar(
     n: int,
     ci: bool,
     missing_mech: str = "linear",
 ) -> Dataset:
-    """Generates a simple linear dataset with controllable MAR missingness.
-
-    Args:
-        n: Number of observations
-        ci: Whether the data is conditionally independent (True) or not (False)
-        missing_mech: Whether the missing mechanism is "linear"" in {X,Y} or uses non-linear + XOR transformations
-
-    Returns:
-        A Dataset object with the full data, missing data, and
-
-    Raises:
-        ValueError: An error generating or applying missing values to the chosen column
-    """
+    """Simulated linear DGP with MAR missingness on X2."""
     X1 = np.random.normal(0, 1, n)
     X2 = np.random.normal(0, 1, n)
     X3 = np.random.normal(0, 1, n)
@@ -446,19 +384,7 @@ def single_mnar(
     ci: bool,
     missing_mech: str = "linear",
 ) -> Dataset:
-    """Generates a simple linear dataset with controllable MNAR missingness.
-
-    Args:
-        n: Number of observations
-        ci: Whether the data is conditionally independent (True) or not (False)
-        missing_mech: Whether the missing mechanism is "linear"" in {X,Y} or uses non-linear + XOR transformations
-
-    Returns:
-        A Dataset object with the full data, missing data, and
-
-    Raises:
-        ValueError: An error generating or applying missing values to the chosen column
-    """
+    """Simulated linear DGP with MNAR missingness on X2."""
     X1 = np.random.normal(0, 1, n)
     X2 = np.random.normal(0, 1, n)
     X3 = np.random.normal(0, 1, n)
@@ -502,17 +428,7 @@ def MAR1(
     missing_mech: str = "linear",
     beta_y: float = 2.0,
 ) -> Dataset:
-    """Generates the MAR-1 missing data pattern from King (2001).
-
-    Args:
-        n: Number of observations
-
-    Returns:
-        A Dataset object
-
-    Raises:
-        ValueError: An error generating or applying missing values to the chosen column
-    """
+    """MAR-1 DGP from King (2001) with multi-variable missingness."""
     data = np.random.multivariate_normal(
         mean=[0, 0, 0, 0, 0],
         cov=[
@@ -594,17 +510,7 @@ def MNAR1(
     missing_mech: str = "linear",
     beta_y: float = 2.0,
 ) -> Dataset:
-    """Generates the MAR-1 missing data pattern from King (2001).
-
-    Args:
-        n: Number of observations
-
-    Returns:
-        A Dataset object
-
-    Raises:
-        ValueError: An error generating or applying missing values to the chosen column
-    """
+    """MNAR-1 variant of the King (2001) DGP (X2 depends on unobserved Z)."""
     data = np.random.multivariate_normal(
         mean=[0, 0, 0, 0, 0],
         cov=[
@@ -691,6 +597,7 @@ def adult(
     missing_mech: str = "linear",
     beta_y: float = 6.0,
 ) -> Dataset:
+    """UCI Adult (census income) with MAR masking on education."""
     path = files("citest.data_examples").joinpath("us-census-income.csv")
     adult = pd.read_csv(path)
 
@@ -800,14 +707,6 @@ def adult(
         )
         adult_miss.loc[mcar_rows, mcar_cols] = np.nan
 
-    # for c in np.random.choice(
-    #     a=adult_miss.shape[1] - 1,
-    #     size=int(adult_miss.shape[1] * mcar_prop),
-    # ):
-    #     adult_miss.iloc[
-    #         np.random.choice(adult_miss.shape[0], int(adult_miss.shape[0] * 0.5)), c + 1
-    #     ] = np.nan
-
     # Make dataset object
     a_dataset.full_data = adult_wide
     a_dataset.miss_data = adult_miss
@@ -824,6 +723,7 @@ def adult(
 def adult_mnar(
     n=1000, ci=True, mcar_prop=0.5, missing_mech: str = "linear", beta_y: float = 6.0
 ) -> Dataset:
+    """UCI Adult with MNAR masking via unobserved sex."""
     path = files("citest.data_examples").joinpath("us-census-income.csv")
     adult = pd.read_csv(path)
 
@@ -936,6 +836,7 @@ def adult_mnar(
 
 
 def mushrooms(n=1000, ci=True, mcar_prop=0.5, missing_mech: str = "linear") -> Dataset:
+    """UCI Mushroom dataset with MAR masking on odor columns."""
     path = files("citest.data_examples").joinpath("agaricus-lepiota.data")
     mushrooms = pd.read_csv(path, delimiter=",", header=None)
     mushrooms.columns = ["y"] + [f"X{i}" for i in range(1, mushrooms.shape[1])]

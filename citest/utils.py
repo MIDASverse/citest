@@ -5,23 +5,19 @@ def BCEclip(
     p: np.array,
     y: np.array,
 ) -> float:
-    """Return observation-level binary cross-entropy loss with clipping
+    """Element-wise binary cross-entropy with clipped probabilities.
 
-    Avoids numerical instability when taking the log of very small numbers.
+    Parameters
+    ----------
+    p : np.ndarray
+        Predicted probabilities.
+    y : np.ndarray
+        True binary labels (same shape as p).
 
-    Note, numpy's divide by zero warning is silenced.
-
-    Args:
-        p: Predicted probabilities
-        y: True binary labels
-        sample_weight: array-like, same shape or broadcastable, to weight entries
-
-    Returns:
-        Clipped binary cross-entropy loss value for input
-
-    Raises:
-        None
-
+    Returns
+    -------
+    np.ndarray
+        Per-element BCE loss (same shape as input).
     """
     assert p.shape == y.shape, "p and y must have the same shape"
 

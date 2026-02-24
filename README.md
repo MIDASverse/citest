@@ -1,58 +1,105 @@
 # citest: Conditional Independence Testing for Missing Data
 
-*This repo is currently private.*
+A hypothesis test for whether an outcome variable is independent of missingness, conditional on the observed explanatory data. The test compares classifier performance in predicting missingness with and without the outcome variable, using multiple imputation and cross-fitting to produce a valid *t*-statistic and *p*-value.
 
-Our test provides a statistical estimate of whether an outcome is independent of missing values, conditional on the observed explanatory data. 
+## Installation
 
-## Dummy example
+```bash
+pip install citest
+```
 
-To use the test, download this repo. From the main directory, you can import the citest module (all names are temporary for the time being):
+## Quick start
 
 ```python
 import pandas as pd
 from citest import CIMissTest
 from citest.data import Dataset
 
-# Load in dataset using pandas
-appl_data = pd.read_csv("path/to/your/data.csv")
+# Load your data
+data = pd.read_csv("path/to/your/data.csv")
 
-# Define the dataset object
-appl_dataset = Dataset()
-appl_dataset.make(
-    appl_data, 
-    y="target_variable", 
+# Define the dataset
+dataset = Dataset()
+dataset.make(
+    data,
+    y="target_variable",
     expl_vars=["expl_var1", "expl_var2", ...]
 )
 
-# Define the test object
-appl_test = CIMissTest(
-    appl_dataset,
-    classifier_args = {"n_estimators": 20, "n_jobs": 8},
-)
-
 # Run the test
-appl_test.run()
+test = CIMissTest(
+    dataset,
+    classifier_args={"n_estimators": 20, "n_jobs": 8},
+)
+test.run()
 
-# Print a summary of the results
-appl_test.summary()
-
+# Print results
+test.summary()
 ```
 
-### Customizing the imputation and classification models
+## How the test works
 
-We have tuned the defaults to work in sensible, applied settings. However, users can customize the imputation and classification models by passing keyword arguments to the `CIMissTest` object:
+1. **Multiple imputation** -- the missing data are multiply imputed (default: MIDAS denoising autoencoder).
+2. **Classifier comparison** -- for each imputed dataset, two classifiers predict the missingness indicator *R*:
+   - One using the outcome *Y* and covariates *X*
+   - One using a permuted (uninformative) copy of *Y* and covariates *X*
+3. **Cross-fitting** -- predictions are made out-of-fold to avoid data leakage.
+4. **Test statistic** -- the weighted difference in binary cross-entropy between the two classifiers is combined across imputations using Rubin's rules, yielding a *t*-statistic and *p*-value.
+
+A significant result indicates that missingness depends on the outcome even after conditioning on the covariates (i.e. the data are not missing at random with respect to *Y*).
+
+## Customizing the pipeline
+
+### Imputers
+
+| Class | Description |
+|---|---|
+| `MidasImputer` (default) | MIDAS denoising autoencoder (via `MIDAS2`) |
+| `IterativeImputer` | scikit-learn iterative imputer with posterior sampling |
+| `IterativeImputer2` | Robust variant with numerical guards for wide/sparse data |
+
+### Classifiers
+
+| Class | Description |
+|---|---|
+| `RFClassifier` (default) | Random forest with auto-tuned `max_features` and `min_samples_leaf` |
+| `ETClassifier` | Extremely randomized trees |
+| `LogisticClassifier` | Logistic regression |
+
+### Example with custom settings
 
 ```python
-from citest.imputer import MidasImputer
-from citest.classifier import RandomForest
+from citest.imputer import IterativeImputer
+from citest.classifier import RFClassifier
 
-appl_test2 = CIMissTest(
-    appl_dataset,
-    imputer = MIDASImputer,
-    classifier = RandomForest,
+test = CIMissTest(
+    dataset,
+    imputer=IterativeImputer,
+    classifier=RFClassifier,
     n_folds=10,
     m=10,
-    classifier_args = {"n_estimators": 20, "n_jobs": 8},
-    imputer_args = {"hidden_layers": [8,4,2], "epochs": 500},
+    classifier_args={"n_estimators": 100, "n_jobs": 8},
+    imputer_args={"max_iter": 20},
 )
 ```
+
+### Key parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| `m` | 10 | Number of multiply imputed datasets |
+| `n_folds` | 10 | Number of cross-validation folds |
+| `variance_method` | `"mi_crossfit"` | Variance estimator: `"mi_crossfit"` or `"legacy_fold"` |
+| `target_level` | `"variable"` | Granularity of the missingness target: `"variable"` or `"column"` |
+| `random_state` | 42 | Random seed for reproducibility |
+
+## Interpreting results
+
+`test.summary()` prints the test output:
+
+- **Mean difference in BCE** -- average reduction in cross-entropy when the real outcome is included. Positive values indicate the outcome helps predict missingness.
+- **t / p-value** -- one-sided test of H0: the outcome does not improve missingness prediction. A small *p*-value provides evidence against conditional independence (i.e. evidence of MNAR-type missingness).
+
+## License
+
+MIT

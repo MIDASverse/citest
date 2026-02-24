@@ -1,8 +1,9 @@
-from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
-from sklearn.linear_model import LogisticRegression
-from joblib import Parallel, delayed
-import numpy as np
 import math
+
+import numpy as np
+from joblib import Parallel, delayed
+from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 
 
 class NotFittedError(Exception):
@@ -10,17 +11,10 @@ class NotFittedError(Exception):
 
 
 class CIClassifier:
-    """Base class following scikitlearn-style classifier syntax
+    """Base classifier interface for CI missingness testing.
 
-    Plausibly any classifier can be used with this API, so long as
-    two methods are defined:
-
-        1. _fit(X,y, **kwargs) -- this must fit the data taking in an array-like
-        object X and an array-like object y of the same dimensions (a missingness indicator)
-        2. _predict(X) -- this must return an array of shape X.shape
-
-    The two public methods fit() and predict() should not be altered in any subclass.
-
+    Subclasses must implement ``_fit(X, y)`` and ``_predict(X)``.
+    The public ``fit`` and ``predict`` methods should not be overridden.
     """
 
     def __init__(self):
@@ -45,15 +39,13 @@ class CIClassifier:
 
 
 class ProbClassifier(CIClassifier):
-    """
-    More specific template classifier performing probabilistic classification per-target column
+    """Per-column probabilistic classifier wrapper.
 
-    Per-target probabilistic classifier. Set target_n_jobs > 1 to parallelize fits/preds across target columns; when doing so, keep the wrapped
-    estimator's n_jobs=1 to avoid oversubscription.
+    Fits a separate estimator (must support ``predict_proba``) to each
+    target column. Constant columns are short-circuited.
 
-    Estimator must support predict_proba; constant targets are short-circuited.
-
-    Note: n_features allows passing feature count if useful, but can be ignored.
+    Set ``target_n_jobs > 1`` to parallelise across targets (keep the
+    wrapped estimator's ``n_jobs=1`` to avoid oversubscription).
     """
 
     def __init__(
@@ -143,11 +135,12 @@ class ProbClassifier(CIClassifier):
 
 
 class RFClassifier(ProbClassifier):
-    """
-    Random Forest classifier
+    """`sklearn.ensemble.RandomForestClassifier`_ wrapper for CI testing.
 
-    RandomForest wrapper using outer target_n_jobs for parallel targets and inner n_jobs for per-tree parallelism. Use
-    either outer parallelism (target_n_jobs > 1, n_jobs=1) or inner parallelism (target_n_jobs=1, n_jobs as desired), but avoid setting both >1.
+    Uses piecewise ``max_features`` heuristics based on ``n_features``.
+    Set ``min_samples_leaf='auto'`` for adaptive leaf sizing.
+
+    .. _sklearn.ensemble.RandomForestClassifier: https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html
     """
 
     def __init__(
@@ -167,7 +160,6 @@ class RFClassifier(ProbClassifier):
 
         # piecewise max_features based on n_features
         if max_features == "auto":
-
             if n_features is None:
                 max_features = (
                     "sqrt"  # default sklearn behavior when n_features unknown
@@ -223,11 +215,9 @@ class RFClassifier(ProbClassifier):
 
 
 class ETClassifier(ProbClassifier):
-    """
-    Extremely randomized trees classifier
+    """`sklearn.ensemble.ExtraTreesClassifier`_ wrapper for CI testing.
 
-    ExtraTrees wrapper using outer target_n_jobs for parallel targets and inner n_jobs for per-tree parallelism. Use
-    either outer parallelism (target_n_jobs > 1, n_jobs=1) or inner parallelism (target_n_jobs=1, n_jobs as desired), but avoid setting both >1.
+    .. _sklearn.ensemble.ExtraTreesClassifier: https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.ExtraTreesClassifier.html
     """
 
     def __init__(
@@ -258,11 +248,9 @@ class ETClassifier(ProbClassifier):
 
 
 class LogisticClassifier(ProbClassifier):
-    """
-    Logistic regression classifier
+    """`sklearn.linear_model.LogisticRegression`_ wrapper for CI testing.
 
-    Logistic regression per target; parallelize across targets with target_n_jobs. Constant columns are handled by returning the observed
-    constant probability.
+    .. _sklearn.linear_model.LogisticRegression: https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html
     """
 
     def __init__(
@@ -287,96 +275,3 @@ class LogisticClassifier(ProbClassifier):
             target_n_jobs=target_n_jobs,
             **kwargs,
         )
-
-
-### GRAVEYARD ###
-
-# class LogisticClassifier(CIClassifier):
-#     """
-#     Logistic regression classifier
-#     """
-
-#     def __init__(self, **kwargs):
-#         super().__init__()
-#         self.logit_kwargs = kwargs
-#         self.estimators_ = None
-#         self.const_probs_ = None
-
-#     def _fit(self, X, y):
-
-#         y_arr = np.asarray(y)
-#         if y_arr.ndim == 1:
-#             y_arr = y_arr[:, None]
-
-#         n_targets = y_arr.shape[1]
-#         self.estimators_ = []
-#         self.const_probs_ = []
-
-#         for j in range(n_targets):
-#             y_j = y_arr[:, j]
-#             classes = np.unique(y_j)
-
-#             if classes.size < 2:  # prevent fit failure
-#                 self.estimators_.append(None)
-#                 self.const_probs_.append(float(classes[0]))
-#             else:
-#                 # Fit a standard logistic regression for this column
-#                 est = LogisticRegression(
-#                     penalty="l2",
-#                     C=1e6,
-#                     solver="liblinear",
-#                     max_iter=5000,
-#                     **self.logit_kwargs,
-#                 )
-#                 est.fit(X, y_j)
-#                 self.estimators_.append(est)
-#                 self.const_probs_.append(None)
-
-#     def _predict(self, X):
-#         probs = []
-#         for est, const_p in zip(self.estimators_, self.const_probs_):
-#             if est is None:
-#                 # Column was constant in training; use stored constant prob
-#                 probs.append(np.full(X.shape[0], const_p))
-#             else:
-#                 p = est.predict_proba(X)
-#                 # binary logit: p has shape (n_samples, 2), [:, 1] is P(R=1)
-#                 probs.append(p[:, 1])
-
-#         return np.column_stack(probs)
-
-
-# class RandomForest(CIClassifier):
-#     """
-#     Random Forest classifier
-#     """
-
-#     def __init__(self, **kwargs):
-#         super().__init__()
-
-#         # add lower than sklearn default for n_estimators
-#         if "n_estimators" in kwargs:
-#             n_estimators = kwargs.pop("n_estimators")
-#         else:
-#             n_estimators = 20
-
-#         self.model = RandomForestClassifier(
-#             **kwargs, n_estimators=n_estimators, max_features=None
-#         )
-
-#     def _fit(self, X, y):
-
-#         self.model.fit(X, y)
-
-#     def _predict(self, X):
-#         probas = self.model.predict_proba(X)
-#         prob_list = probas if isinstance(probas, list) else [probas]
-
-#         cols = [
-#             (
-#                 p[:, 1] if p.ndim > 1 and p.shape[1] > 1 else p[:, 0]
-#             )  # probability of R = 1
-#             for p in prob_list
-#         ]
-
-#         return np.column_stack(cols)
