@@ -217,14 +217,17 @@ class RFClassifier(ProbClassifier):
 class ETClassifier(ProbClassifier):
     """`sklearn.ensemble.ExtraTreesClassifier`_ wrapper for CI testing.
 
+    Uses piecewise ``max_features`` heuristics based on ``n_features``.
+    Set ``min_samples_leaf='auto'`` for adaptive leaf sizing.
+
     .. _sklearn.ensemble.ExtraTreesClassifier: https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.ExtraTreesClassifier.html
     """
 
     def __init__(
         self,
         n_estimators=100,
-        max_features=None,
-        min_samples_leaf=5,
+        max_features="auto",
+        min_samples_leaf="auto",
         class_weight="balanced",
         n_features=None,
         target_n_jobs=1,
@@ -233,18 +236,57 @@ class ETClassifier(ProbClassifier):
         **kwargs,
     ):
         tree_n_jobs = 1 if target_n_jobs not in (None, 1) and n_jobs is None else n_jobs
+
+        if max_features == "auto":
+            if n_features is None:
+                max_features = "sqrt"
+                raise UserWarning(
+                    "n_features is None; setting max_features='sqrt' by default"
+                )
+            elif n_features <= 12:
+                max_features = None
+            elif n_features <= 80:
+                max_features = 12
+            else:
+                max_features = "sqrt"
+
         super().__init__(
             estimator=ExtraTreesClassifier,
             n_estimators=n_estimators,
             max_features=max_features,
             min_samples_leaf=min_samples_leaf,
             class_weight=class_weight,
-            n_features=n_features,  # ignored
+            n_features=n_features,
             target_n_jobs=target_n_jobs,
             n_jobs=tree_n_jobs,
             random_state=random_state,
             **kwargs,
         )
+
+    @staticmethod
+    def _auto_min_samples_leaf(n, n_features, lo=10, hi=50, default=5):
+        if n <= 0:
+            raise ValueError("n must be positive for auto min_samples_leaf")
+        if n == 1:
+            return 1
+
+        if n_features > 12:
+            leaf = int(default)
+        else:
+            leaf = int(round(math.sqrt(n)))
+            leaf = max(lo, min(hi, leaf))
+
+        upper = max(1, n // 2)
+        return max(1, min(leaf, upper))
+
+    def _fit(self, X, y):
+        if self.base_kwargs.get("min_samples_leaf", None) == "auto":
+            n = X.shape[0]
+            n_features = self.n_features if self.n_features is not None else X.shape[1]
+            auto_msl = self._auto_min_samples_leaf(n, n_features)
+            self.base_kwargs["min_samples_leaf"] = auto_msl
+
+        super()._fit(X, y)
 
 
 class LogisticClassifier(ProbClassifier):
