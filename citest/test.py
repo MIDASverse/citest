@@ -1,3 +1,5 @@
+import types
+
 import numpy as np
 from scipy import stats
 from sklearn.model_selection import KFold
@@ -435,6 +437,123 @@ class CIMissTest:
             "df": df,
             "rel_reduction": rel_score_reduction,
         }
+
+    def imputer_r2(self, mask_frac: float = 0.2, m_eval: int = 1) -> dict:
+        """Estimate out-of-sample R² for the imputer via mask-and-impute.
+
+        For each CV fold, a fraction of **observed** test-fold cells (in
+        columns that have genuine missingness) are additionally masked.
+        A fresh imputer is fit on the (unmodified) training rows and used
+        to fill the whole dataset.  Imputed values at the masked positions
+        are compared to the saved true values, yielding per-variable R².
+
+        Parameters
+        ----------
+        mask_frac : float
+            Fraction of observed test-fold cells to hold out per column.
+        m_eval : int
+            Number of imputations to average over (more = smoother but slower).
+
+        Returns
+        -------
+        dict
+            ``{"mean_r2": float, "per_variable": {col: float, ...}}``
+        """
+        cv = self._get_cv()
+
+        if self.dataset.miss_data.shape[0] > 2000:
+            sample_idxs = self.rng.choice(
+                self.dataset.miss_data.shape[0], size=2000, replace=False
+            )
+        else:
+            sample_idxs = np.arange(self.dataset.miss_data.shape[0])
+
+        original = self.dataset.miss_data
+        miss_mask = original.isna()
+
+        # Only evaluate columns that already have genuine NaN
+        eval_cols = [col for col in original.columns if miss_mask[col].any()]
+
+        if not eval_cols:
+            return {"mean_r2": float("nan"), "per_variable": {}}
+
+        col_idx_map = {col: i for i, col in enumerate(original.columns)}
+
+        # Accumulators: true and imputed values per column across folds
+        true_vals = {col: [] for col in eval_cols}
+        imputed_vals = {col: [] for col in eval_cols}
+
+        for train_rel, test_rel in cv.split(sample_idxs):
+            train_idx = sample_idxs[train_rel]
+            test_idx = sample_idxs[test_rel]
+
+            modified = original.copy()
+            fold_masks = {}  # col -> array of masked row positions
+            fold_true = {}   # col -> array of true values
+
+            for col in eval_cols:
+                col_pos = col_idx_map[col]
+                # Observed cells in the test fold for this column
+                test_observed_mask = ~miss_mask.iloc[test_idx, col_pos].values
+                test_observed = test_idx[test_observed_mask]
+
+                if len(test_observed) == 0:
+                    continue
+
+                n_to_mask = max(1, int(len(test_observed) * mask_frac))
+                mask_rows = self.rng.choice(
+                    test_observed, size=n_to_mask, replace=False
+                )
+
+                fold_true[col] = modified.iloc[mask_rows, col_pos].values.copy()
+                modified.iloc[mask_rows, col_pos] = np.nan
+                fold_masks[col] = mask_rows
+
+            if not fold_masks:
+                continue
+
+            # Lightweight wrapper — imputers only access dataset.miss_data
+            wrapper = types.SimpleNamespace(miss_data=modified)
+
+            imp = self.imputer(dataset=wrapper)
+            imp_datasets = imp.get_m_complete(
+                m=m_eval, train_index=train_idx, **self.imputer_args
+            )
+
+            # Average imputed values across the m_eval draws
+            fold_imputed = {col: np.zeros(len(rows)) for col, rows in fold_masks.items()}
+            for imp_data in imp_datasets:
+                for col, mask_rows in fold_masks.items():
+                    col_pos = col_idx_map[col]
+                    fold_imputed[col] += imp_data.iloc[mask_rows, col_pos].values
+
+            for col in fold_masks:
+                fold_imputed[col] /= m_eval
+                true_vals[col].append(fold_true[col])
+                imputed_vals[col].append(fold_imputed[col])
+
+        # Compute per-variable R²
+        per_variable = {}
+        for col in eval_cols:
+            if not true_vals[col]:
+                per_variable[col] = float("nan")
+                continue
+
+            y_true = np.concatenate(true_vals[col])
+            y_pred = np.concatenate(imputed_vals[col])
+
+            ss_res = np.sum((y_true - y_pred) ** 2)
+            ss_tot = np.sum((y_true - y_true.mean()) ** 2)
+
+            if ss_tot == 0:
+                per_variable[col] = float("nan")
+            else:
+                per_variable[col] = 1.0 - ss_res / ss_tot
+
+        valid_r2 = [v for v in per_variable.values() if not np.isnan(v)]
+        mean_r2 = float(np.mean(valid_r2)) if valid_r2 else float("nan")
+
+        return {"mean_r2": mean_r2, "per_variable": per_variable}
 
     def summary(self):
         """Print a summary of the test results"""
