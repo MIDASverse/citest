@@ -35,6 +35,9 @@ class CIMissTest:
         Extra keyword arguments forwarded to the imputer.
     variance_method : str
         ``'mi_crossfit'`` (default) or ``'legacy_fold'``.
+    subsample_cap : int or None
+        Maximum number of rows to subsample for testing. Set to ``None``
+        to disable subsampling (default ``2000``).
     """
 
     def __init__(
@@ -49,6 +52,7 @@ class CIMissTest:
         random_state: int = 42,
         target_level: str = "variable",
         variance_method: str = "mi_crossfit",
+        subsample_cap: int = 2000,
     ):
         self.dataset = dataset
         self.imputer = imputer
@@ -61,6 +65,7 @@ class CIMissTest:
         self.rng = np.random.default_rng(random_state)
         self.target_level = target_level
         self.variance_method = variance_method
+        self.subsample_cap = subsample_cap
 
     def __repr__(self):
         return (
@@ -98,9 +103,9 @@ class CIMissTest:
 
         cv = self._get_cv()
 
-        if self.dataset.miss_data.shape[0] > 2000:
+        if self.subsample_cap and self.dataset.miss_data.shape[0] > self.subsample_cap:
             sample_idxs = self.rng.choice(
-                self.dataset.miss_data.shape[0], size=2000, replace=False
+                self.dataset.miss_data.shape[0], size=self.subsample_cap, replace=False
             )
         else:
             sample_idxs = np.arange(self.dataset.miss_data.shape[0])
@@ -461,9 +466,9 @@ class CIMissTest:
         """
         cv = self._get_cv()
 
-        if self.dataset.miss_data.shape[0] > 2000:
+        if self.subsample_cap and self.dataset.miss_data.shape[0] > self.subsample_cap:
             sample_idxs = self.rng.choice(
-                self.dataset.miss_data.shape[0], size=2000, replace=False
+                self.dataset.miss_data.shape[0], size=self.subsample_cap, replace=False
             )
         else:
             sample_idxs = np.arange(self.dataset.miss_data.shape[0])
