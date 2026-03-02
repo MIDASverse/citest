@@ -38,7 +38,7 @@ from citest import CIMissTest
 
 test = CIMissTest(
     dataset,
-    classifier_args={"n_estimators": 20, "n_jobs": 8},
+    classifier_args={"n_estimators": 20, "target_n_jobs": 8},
 )
 test.run()
 ```
@@ -62,7 +62,7 @@ The summary reports:
 |---|---|---|
 | `m` | `10` | Number of multiply imputed datasets |
 | `n_folds` | `10` | Number of cross-validation folds |
-| `variance_method` | `"mi_crossfit"` | Variance estimator: `"mi_crossfit"` or `"legacy_fold"` |
+| `variance_method` | `"mi_crossfit"` | Variance estimator |
 | `target_level` | `"variable"` | Missingness granularity: `"variable"` or `"column"` |
 | `random_state` | `42` | Random seed for reproducibility |
 
@@ -94,6 +94,6 @@ from citest.classifier import RFClassifier
 test = CIMissTest(
     dataset,
     classifier=RFClassifier,
-    classifier_args={"n_estimators": 100, "n_jobs": 8},
+    classifier_args={"n_estimators": 100, "target_n_jobs": 8},
 )
 ```

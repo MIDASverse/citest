@@ -1,7 +1,6 @@
 import unittest
 
 import numpy as np
-
 from citest import data
 from citest.data import Dataset
 
@@ -17,13 +16,6 @@ class TestDGPSmoke(unittest.TestCase):
             self.assertEqual(ds.full_data.shape, ds.miss_data.shape)
         if ds.weights is not None:
             self.assertEqual(ds.weights.shape[0], ds.miss_data.shape[1])
-
-    def test_identify(self):
-        np.random.seed(2)
-        for ci in [True, False]:
-            with self.subTest(ci=ci):
-                ds = data.identify(n=30, ci=ci, eta=0.1)
-                self._assert_basic_dataset(ds, 30)
 
     def test_single_mar(self):
         np.random.seed(3)

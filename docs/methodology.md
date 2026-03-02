@@ -93,22 +93,14 @@ where the degrees of freedom \(\nu\) are computed using the **Barnard--Rubin** a
 
 with \(\nu_{\text{old}} = (m-1)(1 + 1/r)^2\) where \(r = (1 + 1/m)B / \bar{U}\), and \(\nu_{\text{obs}}\) depends on the complete-data degrees of freedom (\(K - 1\)).
 
-## Variance methods
+## Variance estimation
 
-`citest` offers two variance estimation strategies via the `variance_method` parameter.
-
-### `mi_crossfit` (default)
-
-The recommended method. Computes observation-level scores and uses fold-level aggregation with the Nadeau--Bengio correction and Barnard--Rubin degrees of freedom, as described above.
+The variance estimator computes observation-level scores and uses fold-level aggregation with the Nadeau--Bengio correction and Barnard--Rubin degrees of freedom, as described above.
 
 Key properties:
 
 - Uses **common random numbers** across imputations within each fold (same classifier seed and permutation), so between-imputation variance \(B\) reflects imputation uncertainty rather than Monte Carlo noise
 - Returns Barnard--Rubin degrees of freedom alongside the test statistic
-
-### `legacy_fold`
-
-The original method. Computes a single scalar difference per fold per imputation, then applies Rubin's rules to the fold-level means. Uses \(K - 1\) degrees of freedom for the *t*-distribution.
 
 ## Kappa diagnostic
 

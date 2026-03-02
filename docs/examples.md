@@ -15,7 +15,7 @@ test = CIMissTest(
     dataset,
     m=10,
     n_folds=10,
-    classifier_args={"n_estimators": 20, "n_jobs": 8},
+    classifier_args={"n_estimators": 20, "target_n_jobs": 8},
 )
 test.run()
 test.summary()
@@ -37,7 +37,7 @@ test = CIMissTest(
     dataset,
     m=10,
     n_folds=10,
-    classifier_args={"n_estimators": 20, "n_jobs": 8},
+    classifier_args={"n_estimators": 20, "target_n_jobs": 8},
 )
 test.run()
 test.summary()
@@ -58,7 +58,7 @@ test = CIMissTest(
     dataset,
     m=10,
     n_folds=10,
-    classifier_args={"n_estimators": 20, "n_jobs": 8},
+    classifier_args={"n_estimators": 20, "target_n_jobs": 8},
 )
 test.run()
 test.summary()

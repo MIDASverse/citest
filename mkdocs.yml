@@ -30,7 +30,7 @@ theme:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
-  - How It Works: methodology.md
+  # - How It Works: methodology.md  # uncomment once paper is online
   - Examples: examples.md
   - API Reference:
       - CIMissTest: api/cimisstest.md
