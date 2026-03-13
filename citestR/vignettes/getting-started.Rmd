@@ -1,0 +1,174 @@
+---
+title: "Getting Started with citestR"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with citestR}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(citestR)
+can_mock <- requireNamespace("jsonlite", quietly = TRUE)
+```
+
+## Overview
+
+**citestR** is a lightweight R client for the
+[citest](https://github.com/MIDASverse/citest) Python package.
+It lets you run the conditional-independence-of-missingness test without
+using `reticulate` at runtime — all communication happens over a local
+HTTP connection to a FastAPI server that wraps the Python package.
+
+## 1. A small executable example
+
+The chunk below runs during vignette build. It uses mocked HTTP responses,
+so it exercises the package interface without requiring a live Python backend.
+
+```{r mocked-example, eval = can_mock}
+mock_json_response <- function(body, status = 200L) {
+  function(req) {
+    httr2::response(
+      status_code = status,
+      headers = list("Content-Type" = "application/json"),
+      body = charToRaw(jsonlite::toJSON(body, auto_unbox = TRUE))
+    )
+  }
+}
+
+pkg_env <- citestR:::.pkg_env
+old_process <- pkg_env$process
+old_port <- pkg_env$port
+old_base_url <- pkg_env$base_url
+on.exit({
+  pkg_env$process <- old_process
+  pkg_env$port <- old_port
+  pkg_env$base_url <- old_base_url
+}, add = TRUE)
+
+pkg_env$process <- list(is_alive = function() TRUE)
+pkg_env$port <- 9999L
+pkg_env$base_url <- "http://127.0.0.1:9999"
+
+# Mock a ci_test response
+mock_fit <- mock_json_response(list(
+  model_id = "test-001",
+  dataset_id = "ds-001",
+  results = list(
+    m = 0.12,
+    B = 0.04,
+    W_bar = 0.01,
+    T = 0.05,
+    t_k = 2.5,
+    p_k = 0.017,
+    p_2s = 0.034,
+    df = 9
+  )
+))
+
+example_data <- data.frame(
+  Y  = c(1.2, -0.4, 0.7, 0.3, -1.1),
+  X1 = c(NA, 0.5, -1.1, 0.8, NA),
+  X2 = c(0.3, 1.4, -0.2, 0.6, 0.9)
+)
+
+result <- httr2::with_mocked_responses(mock_fit, {
+  ci_test(example_data, y = "Y", m = 2L, n_folds = 2L)
+})
+
+result
+```
+
+## 2. Install the Python backend
+
+If you don't already have a Python environment with `citest` installed,
+the package provides a helper:
+
+```{r install, eval = FALSE}
+library(citestR)
+
+# Creates a virtualenv called "citest_env" and installs the citest API backend
+install_backend(method = "pip")
+```
+
+You only need to do this once.
+
+## 3. Run a test
+
+```{r fit, eval = FALSE}
+library(citestR)
+
+# Example data frame with some missing values
+set.seed(42)
+n <- 500
+df <- data.frame(
+  Y  = rnorm(n),
+  X1 = rnorm(n),
+  X2 = rnorm(n),
+  X3 = rnorm(n)
+)
+# Introduce MAR missingness on X2
+df$X2[df$X1 > 0.5] <- NA
+
+# Run the CI test (server starts automatically)
+result <- ci_test(
+  data       = df,
+  y          = "Y",
+  imputer    = "iterative",
+  classifier = "rf",
+  m          = 5L,
+  n_folds    = 5L
+)
+
+result$results
+```
+
+The first call starts the Python server in the background; subsequent calls
+reuse the running process.
+
+## 4. Retrieve a summary
+
+```{r summary, eval = FALSE}
+summary_info <- get_summary(result$model_id)
+summary_info
+```
+
+## 5. Imputer diagnostics
+
+```{r imputer-r2, eval = FALSE}
+r2 <- imputer_r2(result$model_id, mask_frac = 0.2, m_eval = 1L)
+r2$mean_r2
+r2$per_variable
+```
+
+## 6. Sensitivity calibration
+
+```{r kappa, eval = FALSE}
+# Single kappa value
+compute_kappa(r2_x_z = 0.5, beta_yx = 0.3, gamma_x = 0.2)
+
+# Full calibration table
+cal <- kappa_calibration_table()
+head(cal)
+
+# Pivot for a fixed beta
+calibration_pivot(beta_yx = 0.3)
+```
+
+## 7. Simulated datasets
+
+```{r simulate, eval = FALSE}
+sim <- simulate_data("single_mar", n = 300, ci = TRUE)
+sim$dataset_id
+sim$pct_missing
+```
+
+## 8. Stopping the server
+
+The server shuts down automatically when the R session ends. To stop it
+manually:
+
+```{r stop, eval = FALSE}
+stop_server()
+```
